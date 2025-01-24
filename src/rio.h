@@ -104,6 +104,16 @@ struct _rio {
             sds buf;
         } fd;
     } io;
+
+//cgmin MDC
+	/* jwpark */
+	size_t (*read_mdc)(struct _rio *, void *buf, size_t len, int type);
+	size_t (*write_mdc)(struct _rio *, const void *buf, size_t len, int type);
+	/*********/
+	/* jwpark */
+	int free_after_write;
+
+
 };
 
 typedef struct _rio rio;
@@ -112,15 +122,28 @@ typedef struct _rio rio;
  * actual implementation of read / write / tell, and will update the checksum
  * if needed. */
 
-static inline size_t rioWrite(rio *r, const void *buf, size_t len) {
+//cgmin mdc warper
+#define rioWrite(r, buf, len) __rioWrite(r, buf, len, 0) // jwpark
+static inline size_t __rioWrite(rio *r, const void *buf, size_t len,int type) {
     if (r->flags & RIO_FLAG_WRITE_ERROR) return 0;
     while (len) {
         size_t bytes_to_write = (r->max_processing_chunk && r->max_processing_chunk < len) ? r->max_processing_chunk : len;
         if (r->update_cksum) r->update_cksum(r,buf,bytes_to_write);
+if (r->write_mdc)
+{
+			if (r->write_mdc(r,buf,bytes_to_write,type) == 0) // jwpark
+{
+            r->flags |= RIO_FLAG_WRITE_ERROR;
+				return 0;
+}
+}
+else
+{
         if (r->write(r,buf,bytes_to_write) == 0) {
             r->flags |= RIO_FLAG_WRITE_ERROR;
             return 0;
         }
+}
         buf = (char*)buf + bytes_to_write;
         len -= bytes_to_write;
         r->processed_bytes += bytes_to_write;
@@ -128,14 +151,27 @@ static inline size_t rioWrite(rio *r, const void *buf, size_t len) {
     return 1;
 }
 
-static inline size_t rioRead(rio *r, void *buf, size_t len) {
+#define rioRead(r, buf, len) __rioRead(r, buf, len, 0) // jwpark
+//static inline size_t rioRead(rio *r, void *buf, size_t len) {
+static inline size_t __rioRead(rio *r, void *buf, size_t len, int type) {
     if (r->flags & RIO_FLAG_READ_ERROR) return 0;
     while (len) {
         size_t bytes_to_read = (r->max_processing_chunk && r->max_processing_chunk < len) ? r->max_processing_chunk : len;
+if (r->read_mdc)
+{
+			if (r->read_mdc(r,buf,bytes_to_read,type) == 0)
+{
+            r->flags |= RIO_FLAG_READ_ERROR;
+				return 0;
+}
+}
+else
+{
         if (r->read(r,buf,bytes_to_read) == 0) {
             r->flags |= RIO_FLAG_READ_ERROR;
             return 0;
         }
+}
         if (r->update_cksum) r->update_cksum(r,buf,bytes_to_read);
         buf = (char*)buf + bytes_to_read;
         len -= bytes_to_read;

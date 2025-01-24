@@ -18,7 +18,7 @@
 #include "mdc.h"
 
 //#include "../deps/malloc_group/include/malloc.h"
-#include "malloc_group.h"
+//#include "malloc_group.h" // not now
 #include <pthread.h>
 
 #define MADV_PAGE_UNIT 0
@@ -33,7 +33,7 @@
 #define DEBUG 0
 #define DEBUG2 0
 #define DEBUG_TIME 0
-#define DEBUG_TIME2 1
+#define DEBUG_TIME2 0
 
 // i think need one of these
 //malloc_group if these are commented
@@ -153,7 +153,7 @@ int new_vma;
 volatile int new_vma;
 volatile int dump_exit;
 pthread_t dump_thread;
-void *dump_function();
+void *dump_function(void*);
 #else
 int new_vma;
 #endif
@@ -183,7 +183,7 @@ struct vma_info *vma_cache = NULL;
 
 static struct bitmap_entry *allocate_bitmap_table(size_t nr_entries)
 {
-	return calloc(nr_entries, sizeof(struct bitmap_entry));
+	return (bitmap_entry*)calloc(nr_entries, sizeof(struct bitmap_entry));
 }
 
 static size_t get_max_nr_bitmap_entries(struct address_space_table *as_table)
@@ -222,7 +222,7 @@ static int create_bitmap_table(struct address_space_table *as_table,
 
 static struct vma_entry *allocate_vma_table(size_t nr_entries)
 {
-	return calloc(nr_entries, sizeof(struct vma_entry));
+	return (vma_entry*)calloc(nr_entries, sizeof(struct vma_entry));
 }
 
 static inline size_t get_max_nr_vma_entries(
@@ -320,7 +320,7 @@ static void load_vma_info_into_table_from_file(struct vma_info *table,
 
 static struct vma_info *allocate_address_space_table(unsigned long nr_entries)
 {
-	return calloc(nr_entries, sizeof(struct vma_info));
+	return (vma_info*)calloc(nr_entries, sizeof(struct vma_info));
 }
 
 static unsigned long get_nr_vmas(FILE *vma_fp)
@@ -780,7 +780,9 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 		   for (i=0;i<pn;i++)
 		   target_vma->size_sum[i] = zget_size_sum(((void *)(target_vma->start+i*4096)));
 		 */
+#if ENABLE_MALLOC_GROUP
 		target_vma->size_sum[index] = zget_size_sum(((void *)(target_vma->start+index*4096)));
+#endif
 		//	target_vma->size_sum[index] = 4096; // cgmin test
 	}
 
@@ -1309,6 +1311,12 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 		if (!buf)
 			return 0;
 
+
+#if (MDC_TYPE == 0)
+	type = CHKPOINT_VAL;
+#endif
+
+
 #ifdef CGMIN_DEBUG
 		printf("buf %p %lu\n",buf,size); //cgmin test
 #endif
@@ -1638,7 +1646,7 @@ error_free_vma_table:
 	static void *readahead(void *arg)
 	{
 		int ret;
-		struct transactional_data *trx_data = arg;
+		struct transactional_data *trx_data = (struct transactional_data*)arg;
 
 		size_t bytes_to_read = trx_data->dump_mmap_size;
 		size_t offset = 0;
@@ -1714,8 +1722,8 @@ error_free_vma_table:
 
 #if DEBUG_TIME2
 		vs_time = 0;//cgmin
-		ttt1 = ttt2 = ttt3 = ttt4 = ttt5 = 0;
-		ttt6 = ttt7 = 0;
+//		ttt1 = ttt2 = ttt3 = ttt4 = ttt5 = 0;
+//		ttt6 = ttt7 = 0;
 #endif
 
 #if DEBUG
@@ -1810,7 +1818,7 @@ error_free_vma_table:
 	{
 		size_t i = 0;
 		size_t bytes = 0;
-		char *buf_cursor = buf;
+		char *buf_cursor = (char*)buf;
 
 		for (; i < count; i++) {
 			bytes += get_object_from_dump((void *)buf_cursor, 
@@ -1854,7 +1862,7 @@ error_free_vma_table:
 	static int initialize_address_table(
 			struct address_table *table, size_t count)
 	{
-		table->table = calloc(count, sizeof(unsigned long));
+		table->table = (long unsigned int*)calloc(count, sizeof(unsigned long));
 		if (!table->table)
 			return -1;
 		table->nr_entries = count;
@@ -2038,9 +2046,9 @@ error_free_vma_table:
 
 #if DEBUG_TIME2
 				printf("vs_time %ld\n",vs_time); //cgmin
-				printf("key %ld val %ld dbadd %ld\n",ttt1,ttt2,ttt3);
-				printf("hase zip %ld zset2 %ld\n",ttt4,ttt5);
-				printf("zmalloc %ld rioRead %ld\n",ttt6,ttt7);
+//				printf("key %ld val %ld dbadd %ld\n",ttt1,ttt2,ttt3);
+//				printf("hase zip %ld zset2 %ld\n",ttt4,ttt5);
+//				printf("zmalloc %ld rioRead %ld\n",ttt6,ttt7);
 #endif
 
 				//printf("\n>> restore_end()\n");
@@ -2109,7 +2117,7 @@ retry:
 						goto retry;
 					}
 					//		unsigned char residency_vec[BATCH_UNIT_IN_PAGES];
-					unsigned char *residency_vec = &global_residency_vec;
+					unsigned char *residency_vec = (unsigned char*)&global_residency_vec;
 					unsigned long end_addr;
 					size_t nr_pages;
 					size_t size;
@@ -2254,7 +2262,7 @@ if (partial == 0)
 
 
 #ifdef THREAD2
-void *dump_function()
+void *dump_function(void* arg)
 {
 	printf("dump start\n");
 	while(!dump_exit || new_vma == 1)

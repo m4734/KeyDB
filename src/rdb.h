@@ -165,10 +165,10 @@ void backgroundSaveDoneHandler(int exitcode, bool fCancelled);
 int rdbSaveKeyValuePair(rio *rdb, robj *key, robj *val, long long expiretime);
 ssize_t rdbSaveSingleModuleAux(rio *rdb, int when, moduleType *mt);
 robj *rdbLoadCheckModuleValue(rio *rdb, char *modulename);
-robj *rdbLoadStringObject(rio *rdb);
+//robj *rdbLoadStringObject(rio *rdb); // cgmin mdc
 ssize_t rdbSaveStringObject(rio *rdb, robj_roptr obj);
-ssize_t rdbSaveRawString(rio *rdb, const unsigned char *s, size_t len);
-void *rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr);
+//ssize_t rdbSaveRawString(rio *rdb, const unsigned char *s, size_t len); //cgmin mdc
+//void *rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr);
 int rdbSaveBinaryDoubleValue(rio *rdb, double val);
 int rdbLoadBinaryDoubleValue(rio *rdb, double *val);
 int rdbSaveBinaryFloatValue(rio *rdb, float val);
@@ -176,5 +176,17 @@ int rdbLoadBinaryFloatValue(rio *rdb, float *val);
 int rdbLoadRio(rio *rdb, int rdbflags, rdbSaveInfo *rsi);
 int rdbSaveRio(rio *rdb, const redisDbPersistentDataSnapshot **rgpdb, int *error, int flags, rdbSaveInfo *rsi);
 rdbSaveInfo *rdbPopulateSaveInfo(rdbSaveInfo *rsi);
+
+// cgmin mdc
+//#define rdbSave(filename, rsi) __rdbSave(filename, rsi, 0) // jwpark
+robj *__rdbLoadStringObject(rio *rdb, int type);
+#define rdbLoadStringObject(rdb) __rdbLoadStringObject(rdb, 0) // jwpark
+ssize_t __rdbSaveRawString(rio *rdb, const unsigned char *s, size_t len, int type);
+#define rdbSaveRawString(rdb, s, len) __rdbSaveRawString(rdb, s, len, 0) // jwpark
+void *__rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr, int type);
+#define rdbGenericLoadStringObject(rdb, flags, lenptr) __rdbGenericLoadStringObject(rdb, flags, lenptr, 0) // jwpark
+
+
+
 
 #endif

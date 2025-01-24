@@ -48,6 +48,8 @@
 #include <future>
 #include "aelocker.h"
 
+#include "mdc.h" // jwpark
+
 /* This macro is called when the internal RDB structure is corrupt */
 #define rdbReportCorruptRDB(...) rdbReportError(1, __LINE__,__VA_ARGS__)
 /* This macro is called when RDB read failed (possibly a short read) */
@@ -99,11 +101,49 @@ void rdbReportError(int corruption_error, int linenum, const char *reason, ...) 
     exit(1);
 }
 
+#if 0
+//cgmin MDC
+/* jwpark */
+extern size_t mdc_fwrite(const void *buf, size_t size, size_t count, FILE *fp, int type);
+extern size_t mdc_fread(void *buf, size_t size, size_t count, FILE *fp, int type);
+extern int checkpoint_start(char *name);
+extern int checkpoint_end(char *name, int free);
+extern int restore_start(char *name);
+extern void restore_end(void);
+/**********/
+#endif
+
+#define rdbWriteRaw(rdb, p, len) __rdbWriteRaw(rdb, p, len, 0) // jwpark
+static int __rdbWriteRaw(rio *rdb, void *p, size_t len, int type) { // jwpark
+    if (rdb && __rioWrite(rdb,p,len, type) == 0)
+        return -1;
+    return len;
+}
+
+#if 0
+/* This is just a wrapper for the low level function rioRead() that will
+ * automatically abort if it is not possible to read the specified amount
+ * of bytes. */
+#define rdbLoadRaw(rdb, buf, len) __rdbLoadRaw(rdb, buf, len, 0)
+void __rdbLoadRaw(rio *rdb, void *buf, uint64_t len, int type) {
+    if (__rioRead(rdb,buf,len,type) == 0) {
+        rdbExitReportCorruptRDB(
+            "Impossible to read %llu bytes in rdbLoadRaw()",
+            (unsigned long long) len);
+        return; /* Not reached. */
+    }
+}
+#endif
+
+// original
+/*
 static ssize_t rdbWriteRaw(rio *rdb, void *p, size_t len) {
     if (rdb && rioWrite(rdb,p,len) == 0)
         return -1;
     return len;
 }
+*/
+
 
 int rdbSaveType(rio *rdb, unsigned char type) {
     return rdbWriteRaw(rdb,&type,1);
@@ -353,9 +393,14 @@ ssize_t rdbSaveLzfBlob(rio *rdb, void *data, size_t compress_len,
     if ((n = rdbSaveLen(rdb,original_len)) == -1) goto writeerr;
     nwritten += n;
 
-    if ((n = rdbWriteRaw(rdb,data,compress_len)) == -1) goto writeerr;
+//cgmin MDC
+    if ((n = __rdbWriteRaw(rdb,data,compress_len,CHKPOINT_REF)) == -1) goto writeerr; // jwpark
     nwritten += n;
 
+/*
+    if ((n = rdbWriteRaw(rdb,data,compress_len)) == -1) goto writeerr;
+    nwritten += n;
+*/
     return nwritten;
 
 writeerr:
@@ -415,7 +460,9 @@ void *rdbLoadLzfStringObject(rio *rdb, int flags, size_t *lenptr) {
     if (lenptr) *lenptr = len;
 
     /* Load the compressed representation and uncompress it to target. */
-    if (rioRead(rdb,c,clen) == 0) goto err;
+//cgmin MDC
+    if (__rioRead(rdb,c,clen,CHKPOINT_REF) == 0) goto err; // jwpark
+//    if (rioRead(rdb,c,clen) == 0) goto err;
     if (lzf_decompress(c,clen,val,len) != len) {
         rdbReportCorruptRDB("Invalid LZF compressed string");
         goto err;
@@ -438,7 +485,9 @@ err:
 
 /* Save a string object as [len][data] on disk. If the object is a string
  * representation of an integer value we try to save it in a special form */
-ssize_t rdbSaveRawString(rio *rdb, const unsigned char *s, size_t len) {
+//cgmin MDC
+//ssize_t rdbSaveRawString(rio *rdb, const unsigned char *s, size_t len) {
+ssize_t __rdbSaveRawString(rio *rdb, const unsigned char *s, size_t len, int type) {
     int enclen;
     ssize_t n, nwritten = 0;
 
@@ -464,7 +513,9 @@ ssize_t rdbSaveRawString(rio *rdb, const unsigned char *s, size_t len) {
     if ((n = rdbSaveLen(rdb,len)) == -1) return -1;
     nwritten += n;
     if (len > 0) {
-        if (rdbWriteRaw(rdb,(unsigned char*)s,len) == -1) return -1;
+//cgmin MDC
+//        if (rdbWriteRaw(rdb,(unsigned char*)s,len) == -1) return -1;
+        if (__rdbWriteRaw(rdb,(unsigned char*)s,len,type) == -1) return -1; // jwpark
         nwritten += len;
     }
     return nwritten;
@@ -497,7 +548,10 @@ ssize_t rdbSaveStringObject(rio *rdb, robj_roptr obj) {
         return rdbSaveLongLongAsStringObject(rdb,(long)ptrFromObj(obj));
     } else {
         serverAssertWithInfo(NULL,obj,sdsEncodedObject(obj));
-        return rdbSaveRawString(rdb,(unsigned char*)szFromObj(obj),sdslen(szFromObj(obj)));
+//cgmin MDC
+//        return rdbSaveRawString(rdb,(unsigned char*)szFromObj(obj),sdslen(szFromObj(obj)));
+//        return __rdbSaveRawString(rdb,obj->ptr,sdslen(obj->ptr),CHKPOINT_REF); // jwpark
+        return __rdbSaveRawString(rdb,(unsigned char*)szFromObj(obj),sdslen(szFromObj(obj)),CHKPOINT_REF); // cgmin
     }
 }
 
@@ -514,7 +568,8 @@ ssize_t rdbSaveStringObject(rio *rdb, robj_roptr obj) {
  *
  * On I/O error NULL is returned.
  */
-void *rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr) {
+//void *rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr) { // cgmin MDC
+void *__rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr,int type) {
     int encode = flags & RDB_LOAD_ENC;
     int plain = flags & RDB_LOAD_PLAIN;
     int sds = flags & RDB_LOAD_SDS;
@@ -545,7 +600,8 @@ void *rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr) {
             return NULL;
         }
         if (lenptr) *lenptr = len;
-        if (len && rioRead(rdb,buf,len) == 0) {
+//        if (len && rioRead(rdb,buf,len) == 0) { //cgmin mdc
+        if (len && __rioRead(rdb,buf,len,type) == 0) { //cgmin mdc
             if (plain)
                 zfree(buf);
             else
@@ -560,7 +616,8 @@ void *rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr) {
             serverLog(g_pserver->loading? LL_WARNING: LL_VERBOSE, "rdbGenericLoadStringObject failed allocating %llu bytes", len);
             return NULL;
         }
-        if (len && rioRead(rdb,ptrFromObj(o),len) == 0) {
+//        if (len && rioRead(rdb,ptrFromObj(o),len) == 0) { // cgmin mdc
+        if (len && __rioRead(rdb,ptrFromObj(o),len,type) == 0) { // cgmin mdc
             decrRefCount(o);
             return NULL;
         }
@@ -568,6 +625,8 @@ void *rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr) {
     }
 }
 
+//cgmin MDC
+/*
 sdsstring rdbLoadString(rio *rdb){
     sds str = (sds)rdbGenericLoadStringObject(rdb,RDB_LOAD_SDS,NULL);
     return sdsstring(str);
@@ -580,6 +639,22 @@ robj *rdbLoadStringObject(rio *rdb) {
 robj *rdbLoadEncodedStringObject(rio *rdb) {
     return (robj*)rdbGenericLoadStringObject(rdb,RDB_LOAD_ENC,NULL);
 }
+*/
+
+robj *__rdbLoadStringObject(rio *rdb, int type) {
+    return (robj*)__rdbGenericLoadStringObject(rdb,RDB_LOAD_NONE,NULL,type);
+}
+
+sdsstring rdbLoadString(rio *rdb){
+    sds str = (sds)__rdbGenericLoadStringObject(rdb,RDB_LOAD_SDS,NULL,CHKPOINT_REF);
+    return sdsstring(str);
+}
+
+robj *rdbLoadEncodedStringObject(rio *rdb) {
+    return (robj*)__rdbGenericLoadStringObject(rdb,RDB_LOAD_ENC,NULL,CHKPOINT_REF);
+}
+
+
 
 /* Save a double value. Doubles are saved as strings prefixed by an unsigned
  * 8 bit integer specifying the length of the representation.
@@ -745,7 +820,8 @@ ssize_t rdbSaveStreamPEL(rio *rdb, rax *pel, int nacks) {
     while(raxNext(&ri)) {
         /* We store IDs in raw form as 128 big big endian numbers, like
          * they are inside the radix tree key. */
-        if ((n = rdbWriteRaw(rdb,ri.key,sizeof(streamID))) == -1) {
+//        if ((n = rdbWriteRaw(rdb,ri.key,sizeof(streamID))) == -1) { //cgmin MDC
+        if ((n = __rdbWriteRaw(rdb,ri.key,sizeof(streamID),CHKPOINT_REF)) == -1) { //cgmin MDC
             raxStop(&ri);
             return -1;
         }
@@ -790,7 +866,8 @@ size_t rdbSaveStreamConsumers(rio *rdb, streamCG *cg) {
         streamConsumer *consumer = (streamConsumer*)ri.data;
 
         /* Consumer name. */
-        if ((n = rdbSaveRawString(rdb,ri.key,ri.key_len)) == -1) {
+//        if ((n = rdbSaveRawString(rdb,ri.key,ri.key_len)) == -1) { // cgmin MDC
+        if ((n = __rdbSaveRawString(rdb,ri.key,ri.key_len,CHKPOINT_REF)) == -1) { // cgmin MDC
             raxStop(&ri);
             return -1;
         }
@@ -842,7 +919,8 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
                     if ((n = rdbSaveLzfBlob(rdb,data,compress_len,node->sz)) == -1) return -1;
                     nwritten += n;
                 } else {
-                    if ((n = rdbSaveRawString(rdb,node->zl,node->sz)) == -1) return -1;
+//                    if ((n = rdbSaveRawString(rdb,node->zl,node->sz)) == -1) return -1; // cgmin MDC
+                    if ((n = __rdbSaveRawString(rdb,node->zl,node->sz,CHKPOINT_REF)) == -1) return -1; // cgmin MDC
                     nwritten += n;
                 }
                 node = node->next;
@@ -865,7 +943,8 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
 
             while((de = dictNext(di)) != NULL) {
                 sds ele = (sds)dictGetKey(de);
-                if ((n = rdbSaveRawString(rdb,(unsigned char*)ele,sdslen(ele)))
+//                if ((n = rdbSaveRawString(rdb,(unsigned char*)ele,sdslen(ele))) //cgmin MDC
+                if ((n = __rdbSaveRawString(rdb,(unsigned char*)ele,sdslen(ele),CHKPOINT_REF))
                     == -1)
                 {
                     dictReleaseIterator(di);
@@ -877,7 +956,8 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
         } else if (o->encoding == OBJ_ENCODING_INTSET) {
             size_t l = intsetBlobLen((intset*)ptrFromObj(o));
 
-            if ((n = rdbSaveRawString(rdb,(unsigned char*)szFromObj(o),l)) == -1) return -1;
+//            if ((n = rdbSaveRawString(rdb,(unsigned char*)szFromObj(o),l)) == -1) return -1; //cgmin MDC
+            if ((n = __rdbSaveRawString(rdb,(unsigned char*)szFromObj(o),l,CHKPOINT_REF)) == -1) return -1;
             nwritten += n;
         } else {
             serverPanic("Unknown set encoding");
@@ -887,7 +967,8 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
         if (o->encoding == OBJ_ENCODING_ZIPLIST) {
             size_t l = ziplistBlobLen((unsigned char*)ptrFromObj(o));
 
-            if ((n = rdbSaveRawString(rdb,(unsigned char*)ptrFromObj(o),l)) == -1) return -1;
+//            if ((n = rdbSaveRawString(rdb,(unsigned char*)ptrFromObj(o),l)) == -1) return -1; // cgmin MDC
+            if ((n = __rdbSaveRawString(rdb,(unsigned char*)ptrFromObj(o),l,CHKPOINT_REF)) == -1) return -1;
             nwritten += n;
         } else if (o->encoding == OBJ_ENCODING_SKIPLIST) {
             zset *zs = (zset*)ptrFromObj(o);
@@ -904,8 +985,13 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
              * O(1) instead of O(log(N)). */
             zskiplistNode *zn = zsl->tail;
             while (zn != NULL) {
+/*
                 if ((n = rdbSaveRawString(rdb,
                     (unsigned char*)zn->ele,sdslen(zn->ele))) == -1)
+*/ // cgmin MDC
+
+                if ((n = __rdbSaveRawString(rdb,
+                    (unsigned char*)zn->ele,sdslen(zn->ele),CHKPOINT_REF)) == -1)
                 {
                     return -1;
                 }
@@ -923,7 +1009,9 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
         if (o->encoding == OBJ_ENCODING_ZIPLIST) {
             size_t l = ziplistBlobLen((unsigned char*)ptrFromObj(o));
 
-            if ((n = rdbSaveRawString(rdb,(unsigned char*)ptrFromObj(o),l)) == -1) return -1;
+//            if ((n = rdbSaveRawString(rdb,(unsigned char*)ptrFromObj(o),l)) == -1) return -1;
+            if ((n = __rdbSaveRawString(rdb,(unsigned char*)ptrFromObj(o),l,CHKPOINT_REF)) == -1) return -1; // cgmin MDC
+
             nwritten += n;
 
         } else if (o->encoding == OBJ_ENCODING_HT) {
@@ -939,16 +1027,23 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
             while((de = dictNext(di)) != NULL) {
                 sds field = (sds)dictGetKey(de);
                 sds value = (sds)dictGetVal(de);
-
+/*
                 if ((n = rdbSaveRawString(rdb,(unsigned char*)field,
                         sdslen(field))) == -1)
+*/
+                if ((n = __rdbSaveRawString(rdb,(unsigned char*)field,
+                        sdslen(field),CHKPOINT_REF)) == -1) // cgmin MDC
                 {
                     dictReleaseIterator(di);
                     return -1;
                 }
                 nwritten += n;
+/*
                 if ((n = rdbSaveRawString(rdb,(unsigned char*)value,
                         sdslen(value))) == -1)
+*/
+                if ((n = __rdbSaveRawString(rdb,(unsigned char*)value,
+                        sdslen(value),CHKPOINT_REF)) == -1) // cgmin MDC
                 {
                     dictReleaseIterator(di);
                     return -1;
@@ -975,12 +1070,14 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
         while (raxNext(&ri)) {
             unsigned char *lp = (unsigned char*)ri.data;
             size_t lp_bytes = lpBytes(lp);
-            if ((n = rdbSaveRawString(rdb,ri.key,ri.key_len)) == -1) {
+//            if ((n = rdbSaveRawString(rdb,ri.key,ri.key_len)) == -1) { //cgmin MDC
+            if ((n = __rdbSaveRawString(rdb,ri.key,ri.key_len,CHKPOINT_REF)) == -1) { //cgmin MDC
                 raxStop(&ri);
                 return -1;
             }
             nwritten += n;
-            if ((n = rdbSaveRawString(rdb,lp,lp_bytes)) == -1) {
+//            if ((n = rdbSaveRawString(rdb,lp,lp_bytes)) == -1) { //cgmin MDC
+            if ((n = __rdbSaveRawString(rdb,lp,lp_bytes,CHKPOINT_REF)) == -1) { //cgmin MDC
                 raxStop(&ri);
                 return -1;
             }
@@ -1015,7 +1112,8 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
                 streamCG *cg = (streamCG*)ri.data;
 
                 /* Save the group name. */
-                if ((n = rdbSaveRawString(rdb,ri.key,ri.key_len)) == -1) {
+//                if ((n = rdbSaveRawString(rdb,ri.key,ri.key_len)) == -1) { //cgmin mdc
+                if ((n = __rdbSaveRawString(rdb,ri.key,ri.key_len,CHKPOINT_REF)) == -1) { //cgmin mdc
                     raxStop(&ri);
                     return -1;
                 }
@@ -1077,15 +1175,19 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
         return io.error ? -1 : (ssize_t)io.bytes;
     } else if (o->type == OBJ_CRON) {
         cronjob *job = (cronjob*)ptrFromObj(o);
-        nwritten = rdbSaveRawString(rdb, (const unsigned char*)job->script.get(), job->script.size());
+//        nwritten = rdbSaveRawString(rdb, (const unsigned char*)job->script.get(), job->script.size()); //cgmin mdc
+        nwritten = __rdbSaveRawString(rdb, (unsigned char*)job->script.get(), job->script.size(),CHKPOINT_REF); //cgmin mdc
         nwritten += rdbSaveMillisecondTime(rdb, job->startTime);
         nwritten += rdbSaveMillisecondTime(rdb, job->interval);
         nwritten += rdbSaveLen(rdb, job->veckeys.size());
         for (auto &key : job->veckeys)
-            nwritten += rdbSaveRawString(rdb, (const unsigned char*)key.get(), key.size());
+//            nwritten += rdbSaveRawString(rdb, (const unsigned char*)key.get(), key.size()); // cgmin mdc
+            nwritten += __rdbSaveRawString(rdb, (unsigned char*)key.get(), key.size(),CHKPOINT_REF); // cgmin mdc
         nwritten += rdbSaveLen(rdb, job->vecargs.size());
         for (auto &arg : job->vecargs)
-            nwritten += rdbSaveRawString(rdb, (const unsigned char*)arg.get(), arg.size());
+//            nwritten += rdbSaveRawString(rdb, (const unsigned char*)arg.get(), arg.size()); // cgmin mdc
+            nwritten += __rdbSaveRawString(rdb, (unsigned char*)arg.get(), arg.size(),CHKPOINT_REF); // cgmin mdc
+
     } else {
         serverPanic("Unknown object type");
     }
@@ -1505,10 +1607,41 @@ int rdbSaveFile(char *filename, const redisDbPersistentDataSnapshot **rgpdb, rdb
     if (g_pserver->rdb_save_incremental_fsync)
         rioSetAutoSync(&rdb,REDIS_AUTOSYNC_BYTES);
 
+//cgmin may start here
+// rdb.free after write hwtait ??
+	int background = 1;
+	if (background)
+		rdb.free_after_write = 1;
+
+#if (MDC_TYPE > 0)
+	char *filename_local = zstrdup(filename); // jwpark
+		if (checkpoint_start(filename_local)) {
+			printf("[jwpark] checkpoint_start failed\n");
+			errno = error;
+			goto werr;
+		} else {
+			printf("[jwpark] checkpoint_start\n");
+		}
+#endif
+//cgmin checkpoint start hrere
+
+
     if (rdbSaveRio(&rdb,rgpdb,&error,RDBFLAGS_NONE,rsi) == C_ERR) {
         errno = error;
         goto werr;
     }
+#if (MDC_TYPE > 0)
+		if (checkpoint_end(filename_local,background)) {
+			serverLogRaw(LL_WARNING,
+					"[jwpark] checkpoint_end failed\n");
+			errno = error;
+			goto werr;
+		} else {
+			serverLogRaw(LL_WARNING,
+					"[jwpark] checkpoint_end\n");
+		}
+#endif
+//cgmin checkpoint end here
 
     /* Make sure data will not remain on the OS's output buffers */
     if (fflush(fp)) goto werr;
@@ -1607,6 +1740,10 @@ int rdbSaveBackgroundFork(rdbSaveInfo *rsi) {
     if ((childpid = redisFork(CHILD_TYPE_RDB)) == 0) {
         int retval;
 
+// cgmin here needs set affinity... 
+
+
+
         /* Child */
         g_pserver->rdb_child_pid = 10000;
         redisSetProcTitle("keydb-rdb-bgsave");
@@ -1618,6 +1755,9 @@ int rdbSaveBackgroundFork(rdbSaveInfo *rsi) {
         exitFromChild((retval == C_OK) ? 0 : 1);
     } else {
         /* Parent */
+
+//cgmin set affinity here
+
         if (childpid == -1) {
             g_pserver->lastbgsave_status = C_ERR;
             serverLog(LL_WARNING,"Can't save in background: fork: %s",
@@ -3583,7 +3723,26 @@ int rdbLoadFile(const char *filename, rdbSaveInfo *rsi, int rdbflags) {
     if ((fp = fopen(filename,"r")) == NULL) return C_ERR;
     startLoadingFile(fp, filename,rdbflags);
     rioInitWithFile(&rdb,fp);
+
+	//cgmin MDC restore hrer
+		/* jwpark */
+#if (MDC_TYPE == 1)
+		   if (restore_start((char*)filename)) {
+		   printf("[jwpark] restore_start failed\n");
+		   errno = EINVAL;
+		   return C_ERR;
+		   } else {
+		   printf("[jwpark] restore_start\n");
+		   }
+#endif
+
     retval = rdbLoadRio(&rdb,rdbflags,rsi);
+
+//cgmin MDC restore end
+#if (MDC_TYPE == 1)
+		restore_end();
+#endif
+
     fclose(fp);
     stopLoading(retval==C_OK);
     return retval;

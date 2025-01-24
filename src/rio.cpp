@@ -55,6 +55,8 @@
 #include "config.h"
 #include "server.h"
 
+#include "mdc.h" // jwpark
+
 /* ------------------------- Buffer I/O implementation ----------------------- */
 
 /* Returns 1 or 0 for success/failure. */
@@ -107,6 +109,11 @@ static const rio rioBufferIO = {
     0,              /* read/write chunk size */
     0,              /* last update time */
     { { NULL, 0 } } /* union for io-specific vars */
+, //cgmin MDC
+NULL, //read
+NULL, //write
+0 // free after write
+
 };
 
 static const rio rioConstBufferIO = {
@@ -141,6 +148,25 @@ void rioInitWithConstBuffer(rio *r, const void *buf, size_t cb)
 
 /* --------------------- Stdio file pointer implementation ------------------- */
 
+//cgmin MDC write
+/* Returns 1 or 0 for success/failure. */
+static size_t rioFileWriteMdc(rio *r, const void *buf, size_t len, int type) { // jwpark
+    size_t retval;
+
+    retval = mdc_fwrite(buf,len,1,r->io.file.fp, type);
+    r->io.file.buffered += len;
+
+    if (r->io.file.autosync &&
+        r->io.file.buffered >= r->io.file.autosync)
+    {
+        fflush(r->io.file.fp);
+        if (redis_fsync(fileno(r->io.file.fp)) == -1) return 0;
+        r->io.file.buffered = 0;
+    }
+    return retval;
+}
+
+
 /* Returns 1 or 0 for success/failure. */
 static size_t rioFileWrite(rio *r, const void *buf, size_t len) {
     size_t retval;
@@ -156,6 +182,12 @@ static size_t rioFileWrite(rio *r, const void *buf, size_t len) {
         r->io.file.buffered = 0;
     }
     return retval;
+}
+
+//cgmin mdc read
+/* Returns 1 or 0 for success/failure. */
+static size_t rioFileReadMdc(rio *r, void *buf, size_t len, int type) { // jwpark
+    return mdc_fread(buf,len,1,r->io.file.fp, type);
 }
 
 /* Returns 1 or 0 for success/failure. */
@@ -188,6 +220,10 @@ static const rio rioFileIO = {
     0,              /* read/write chunk size */
     0,              /* last update time */
     { { NULL, 0 } } /* union for io-specific vars */
+,
+	rioFileReadMdc, // cgmin what is this
+	rioFileWriteMdc,
+	0 // free after write
 };
 
 void rioInitWithFile(rio *r, FILE *fp) {
@@ -289,6 +325,10 @@ static const rio rioConnIO = {
     0,              /* read/write chunk size */
     0,              /* last update time */
     { { NULL, 0 } } /* union for io-specific vars */
+, //cgmin MDC
+	NULL,
+	NULL,
+	0
 };
 
 /* Create an RIO that implements a buffered read from an fd

@@ -8,6 +8,13 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
+#define MDC_TYPE 1
+/*
+0 = original
+1 = mdc
+2 = group
+3 = all
+*/
 
 #define PAGE_SHIFT 12UL
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
@@ -20,9 +27,6 @@
 
 #define MIN(a,b)	(((a)<(b))?(a):(b))
 #define MAX(a,b)	(((a)>(b))?(a):(b))
-
-long ttt1,ttt2,ttt3,ttt4,ttt5; //cgmin
-long ttt6,ttt7;
 
 enum chk_type {
 	CHKPOINT_VAL = 0,
