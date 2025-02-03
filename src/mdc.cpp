@@ -30,28 +30,6 @@
 
 #define MADV_DONTNEED2 5
 
-#define DEBUG 0
-#define DEBUG2 0
-#define DEBUG_TIME 0
-#define DEBUG_TIME2 0
-
-// i think need one of these
-//malloc_group if these are commented
-//ifdef THREAD2, it will be MDC+
-//#define THREAD1
-//#define THREAD2
-
-//choose one
-#define ENABLE_MALLOC_GROUP 0
-#define ENABLE_MDCP 1
-
-#define REMOVE_MINCORE 1
-
-#if ENABLE_MDCP
-	#define THREAD2
-#endif
-
-
 #if 0
 #define __NR_mlock2 284
 
@@ -69,10 +47,12 @@ struct vma_info {
 	unsigned long start;
 	unsigned long end;
 	int stored;
+#ifdef GROUP_ON
 	int dumped; //cgmin
 	int* size_sum; //cgmin
 	int* size_cnt;
 	int* dumped2;
+#endif
 };
 
 struct vma_entry {
@@ -274,10 +254,10 @@ static int fill_vma_info(char *line, struct vma_info *vma)
 		printf("%lx-%lx\n", vma->start, vma->end);
 #endif
 
+#ifdef GROUP_ON
 		//cgmin size sum
 		//printf("size_sum\n");
 		int i,pn;
-
 		pn = (vma->end-vma->start)/4096;
 		vma->size_sum = (int*)malloc(pn*sizeof(int));
 		vma->size_cnt = (int*)malloc(pn*sizeof(int));
@@ -294,7 +274,7 @@ static int fill_vma_info(char *line, struct vma_info *vma)
 			//printf("%d ",vma->size_sum[i]);
 		}
 		//printf("size_sum end\n");
-
+#endif
 		return 0;
 	}
 	return -1;
@@ -649,11 +629,13 @@ static int __perform_memory_dump_in_batch(struct transactional_data *trx_data,
 			size_t bytes = write(trx_data->dump_fd, (void *)addr, PAGE_SIZE);
 			if (bytes != PAGE_SIZE)
 				return -1;
-#if MADVISE_UNIT_TYPE == MADV_PAGE_UNIT
-			if (false && madvise((void *)addr, PAGE_SIZE, MADV_DONTNEED2)) { //cgmin size_sum have to full
+#if MADVISE_UNIT_TYPE == MADV_PAGE_UNIT // not used
+#if (MDC_TYPE == 1)
+			if (madvise((void *)addr, PAGE_SIZE, MADV_DONTNEED2)) { //cgmin size_sum have to full
 				printf("madvise with page unit failed %d\n", errno);
 				return -1;
 			}
+#endif
 #endif
 			//printf("memory dump addr %lx\n", addr);
 		} else {
@@ -765,6 +747,7 @@ int mc=0;
 int nmc=0;
 void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 {
+#ifdef GROUP_ON
 	//printf(" max %d  index  %d  ",(target_vma->end-target_vma->start)/4096,index);
 	if ((target_vma->end-target_vma->start)/4096 <= index)
 	{
@@ -803,7 +786,6 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 		//target_vma->dumped2[index] = 1;
 		//return;
 		//printf("madvise %p ",((void *)(target_vma->start+index*4096)));
-
 		if(/*index > 0 && */madvise((void *)(target_vma->start+index*4096),4096,MADV_DONTNEED2)) // index 0 has heap metadata // not only 0 more pages have metadata
 			printf("madvise error\n");
 
@@ -818,6 +800,7 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 			printf("-1 size cnt big %d sum %d\n",target_vma->size_cnt[index-1],target_vma->size_sum[index-1]);
 		printf("+1 size cnt big %d sum %d\n",target_vma->size_cnt[index+1],target_vma->size_sum[index+1]);
 	}
+#endif
 }
 
 static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
@@ -873,7 +856,8 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 		clock_gettime(CLOCK_MONOTONIC,&ts2);
 		dump_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
 
-
+//#ifdef GROUP_ON
+#if (MDC_TYPE == 3)
 		//cgmin madvise --------------------------------------------------------------
 		//batch doesn't have start end addr
 		if (free_after_write)
@@ -887,6 +871,7 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 				check_and_free(target_vma,base+index);
 			}
 		}
+#endif
 #if MADVISE_UNIT_TYPE == MADV_DUMP_UNIT
 #if 0
 		if (munlock((void *)page_addr, size)) {
@@ -894,13 +879,16 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 					errno, page_addr, size);
 		}
 #endif
-		if (0 && free_after_write) { //cgmin size_sum
+#endif
+#if (MDC_TYPE == 1)
+		if (free_after_write) { //cgmin size_sum // original mdc
 			if (madvise((void *)page_addr, size, MADV_DONTNEED2)) {
 				printf("madvise with dump unit failed %d\n", errno);
 				return -1;
 			}
 		}
 #endif
+
 		clock_gettime(CLOCK_MONOTONIC,&ts1);
 
 		if (save_bitmap_table(trx_data, be)) {
@@ -914,14 +902,16 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 		printf("bitmap %lx, end_addr %lx\n", be->bitmap, end_addr);
 #endif
 	}
-#if MADVISE_UNIT_TYPE == MADV_VMA_UNIT
-	if (0 && free_after_write) { //cgmin size_sum
+#if MADVISE_UNIT_TYPE == MADV_VMA_UNIT // not used
+#if (MDC_TYPE == 1)
+	if (free_after_write) { //cgmin size_sum
 		if (madvise((void *)target_vma->start, target_vma->end - target_vma->start, 
 					MADV_DONTNEED2)) {
 			printf("madvise with vma unit failed %d\n", errno);
 			return -1;
 		}
 	}
+#endif
 #endif
 #if DEBUG
 	print_vma_table(&trx_data->vma_table);
@@ -1127,7 +1117,7 @@ retry:
 }
 
 size_t pingpong = 0;
-#ifdef THREAD1
+#ifndef THREAD2
 size_t size_sum = 0;
 #endif
 //char xxx[4096] = {255,};
@@ -1139,7 +1129,8 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 	struct address_space_table *as_table;
 
 	// cgmin doesn't access the buf
-#if ENABLE_MALLOC_GROUP
+//#if ENABLE_MALLOC_GROUP
+#ifndef MDC_ON
 	//always write value itself
 	size_t ret = fwrite(buf, size, count, fp);
 	if (ret != count)
@@ -1167,12 +1158,20 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 	{
 		target_vma->stored = 1;
 		//printf("vma %lx %lx\n",target_vma->start,target_vma->end);
-		//		perform_memory_dump_for_vma(&global_trx.trx_data, target_vma,0);
-		new_vma = 1;
+	//		perform_memory_dump_for_vma(&global_trx.trx_data, target_vma,0);
+#ifdef THREAD2
+		new_vma = 1; // reaquest new dup
+#endif
 	}
+
+// can not understand this part.....
+/*
+
 #ifdef THREAD1
+//#ifndef THREAD2
+// there is no dump rqeust and this thread do dump
 	//		size_sum+=size;
-	size_sum++;
+	size_sum++; // what is this size sum and why 4????
 	while (size_sum >= 4)//096) //cgmin
 	{
 		//			write(global_trx.trx_data.dump_fd,xxx,4096);
@@ -1182,6 +1181,8 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 		size_sum-=4;//096;
 	}
 #endif
+
+*/
 
 #if 0
 	struct timespec start, end;
@@ -1312,7 +1313,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 			return 0;
 
 
-#if (MDC_TYPE == 0)
+#ifndef MDC_ON
 	type = CHKPOINT_VAL;
 #endif
 
@@ -1380,9 +1381,11 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 					printf("%d ",table->table[j].size_sum[i]);
 				printf("\n");
 #endif
+#ifdef GROUP_ON
 				free(table->table[j].size_sum); //cgmin size_sum
 				free(table->table[j].size_cnt);
 				free(table->table[j].dumped2);
+#endif
 			}
 			free(table->table);
 		}
@@ -1470,7 +1473,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 		char *newfile = strdup(name);
 		struct transactional_data *trx_data = &global_trx.trx_data;
 		printf("madvise mc %d nmc %d\n",mc,nmc);
-		/*
+#if (MDC_TYPE == 1)
 		   if (free_after_write) {
 		   if (perform_memory_dump_for_each_vma_and_free(trx_data)) {
 		   printf("%s: memory dump and free failed\n",__func__);
@@ -1482,7 +1485,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 		   return -1;
 		   }
 		   }
-		 */
+#else
 #ifdef THREAD1
 		//	perform_memory_dump_for_vma_partial(trx_data,0,0);//cgmin
 		perform_memory_dump_for_vma_partial(trx_data,0,1);//cgmin
@@ -1491,6 +1494,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 #ifdef THREAD2
 		dump_exit=1;
 		pthread_join(dump_thread,NULL);
+#endif
 #endif
 
 		cleanup_for_checkpointing(trx_data);
@@ -2061,7 +2065,7 @@ error_free_vma_table:
 			unsigned long global_dump_addr;
 			int global_residency_index;
 			int global_nr_pages;
-
+#ifdef THREAD1 // can not udnerdstnad
 			static int perform_memory_dump_for_vma_partial(struct transactional_data *trx_data,
 					int partial, int free_after_write) //cgmin
 			{
@@ -2191,7 +2195,6 @@ retry:
 					printf("bitmap %lx, end_addr %lx\n", be->bitmap, end_addr);
 #endif
 				}
-
 				//cgmin may not use
 				/*
 #if MADVISE_UNIT_TYPE == MADV_VMA_UNIT
@@ -2259,7 +2262,7 @@ if (partial == 0)
 
 	return 0;
 	}
-
+#endif
 
 #ifdef THREAD2
 void *dump_function(void* arg)
@@ -2286,6 +2289,7 @@ void *dump_function(void* arg)
 #endif
 void check_end(void* buf)
 {
+#ifdef GROUP_ON
 	if (buf == 0)
 	{
 		printf("buf error\n");
@@ -2345,4 +2349,5 @@ void check_end(void* buf)
 		//if (!no_free)
 		check_and_free(target_vma,index);
 	}
+#endif
 }

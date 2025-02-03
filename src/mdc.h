@@ -8,6 +8,11 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
+#define DEBUG 0
+#define DEBUG2 0
+#define DEBUG_TIME 0
+#define DEBUG_TIME2 0
+
 #define MDC_TYPE 1
 /*
 0 = original
@@ -15,6 +20,37 @@
 2 = group
 3 = all
 */
+
+#if (MDC_TYPE == 1 || MDC_TYPE == 3)
+#define MDC_ON 1
+#define ENABLE_MDCP 1
+#endif
+
+#if (MDC_TYPE == 2 || MDC_TYPE == 3)
+#define GROUP_ON 1
+#define ENABLE_MDCP 1
+#endif
+
+// i think need one of these
+//malloc_group if these are commented
+//ifdef THREAD2, it will be MDC+
+//#define THREAD1
+//#define THREAD2
+
+//choose one
+//#define ENABLE_MALLOC_GROUP 0
+//#define ENABLE_MDCP 1
+
+#define REMOVE_MINCORE 1
+
+//#if ENABLE_MDCP
+//	#define THREAD2
+//#endif
+
+#if (MDC_TYPE == 3)
+#define THREAD2
+#endif
+
 
 #define PAGE_SHIFT 12UL
 #define PAGE_SIZE (1UL << PAGE_SHIFT)

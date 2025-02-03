@@ -1613,7 +1613,7 @@ int rdbSaveFile(char *filename, const redisDbPersistentDataSnapshot **rgpdb, rdb
 	if (background)
 		rdb.free_after_write = 1;
 
-#if (MDC_TYPE > 0)
+#ifdef MDC_ON
 	char *filename_local = zstrdup(filename); // jwpark
 		if (checkpoint_start(filename_local)) {
 			printf("[jwpark] checkpoint_start failed\n");
@@ -1630,7 +1630,7 @@ int rdbSaveFile(char *filename, const redisDbPersistentDataSnapshot **rgpdb, rdb
         errno = error;
         goto werr;
     }
-#if (MDC_TYPE > 0)
+#ifdef MDC_ON
 		if (checkpoint_end(filename_local,background)) {
 			serverLogRaw(LL_WARNING,
 					"[jwpark] checkpoint_end failed\n");
@@ -3726,7 +3726,7 @@ int rdbLoadFile(const char *filename, rdbSaveInfo *rsi, int rdbflags) {
 
 	//cgmin MDC restore hrer
 		/* jwpark */
-#if (MDC_TYPE == 1)
+#ifdef MDC_ON
 		   if (restore_start((char*)filename)) {
 		   printf("[jwpark] restore_start failed\n");
 		   errno = EINVAL;
@@ -3739,7 +3739,7 @@ int rdbLoadFile(const char *filename, rdbSaveInfo *rsi, int rdbflags) {
     retval = rdbLoadRio(&rdb,rdbflags,rsi);
 
 //cgmin MDC restore end
-#if (MDC_TYPE == 1)
+#ifdef MDC_ON
 		restore_end();
 #endif
 
