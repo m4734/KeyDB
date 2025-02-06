@@ -1298,6 +1298,15 @@ int rdbSaveKeyValuePair(rio *rdb, robj_roptr key, robj_roptr val, const expireEn
         }
     }
 
+#if GROUP_ON
+	check_end((void*)ptrFromObj(val)); //cgmin
+
+// it is obj_zset->ziplist
+// but what if it is not
+// we may need more check_end in rdbsaveobject
+
+#endif
+
     return 1;
 }
 

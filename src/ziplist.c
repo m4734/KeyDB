@@ -192,6 +192,8 @@
 #include "endianconv.h"
 #include "redisassert.h"
 
+#include "mdc.h" //cgmin
+
 #define ZIP_END 255         /* Special "end of ziplist" entry. */
 #define ZIP_BIG_PREVLEN 254 /* ZIP_BIG_PREVLEN - 1 is the max number of bytes of
                                the previous entry, for the "prevlen" field prefixing
@@ -711,7 +713,11 @@ static inline void zipAssertValidEntry(unsigned char* zl, size_t zlbytes, unsign
 /* Create a new empty ziplist. */
 unsigned char *ziplistNew(void) {
     unsigned int bytes = ZIPLIST_HEADER_SIZE+ZIPLIST_END_SIZE;
+#ifdef GROUP_ON //cgmin
+    unsigned char *zl = zmalloc_group(bytes, MALLOC_SHARED,VALUE_GROUP);
+#else
     unsigned char *zl = zmalloc(bytes, MALLOC_SHARED);
+#endif
     ZIPLIST_BYTES(zl) = intrev32ifbe(bytes);
     ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(ZIPLIST_HEADER_SIZE);
     ZIPLIST_LENGTH(zl) = 0;

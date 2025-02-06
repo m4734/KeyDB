@@ -35,6 +35,8 @@
 #define __xstr(s) __str(s)
 #define __str(s) #s
 
+#include "mdc.h"
+
 #include "storage.h"
 #if defined(USE_MEMKIND)
     #define ZMALLOC_LIB ("memkind")
@@ -136,6 +138,25 @@ size_t zmalloc_get_private_dirty(long pid);
 size_t zmalloc_get_smap_bytes_by_field(const char *field, long pid);
 size_t zmalloc_get_memory_size(void);
 void zlibc_free(void *ptr);
+
+#ifdef GROUP_ON
+//cgmin
+//void *malloc_group(size_t size, size_t group);
+void *zmalloc_group(size_t size, enum MALLOC_CLASS mclass, size_t group);
+void *zmalloc_usable_group(size_t size, size_t *usable,size_t group);
+void *ztrymalloc_usable_group(size_t size, size_t *usable,size_t group);
+
+void *ztrycalloc_group(size_t size,size_t group);
+#ifdef __cplusplus
+void *zcalloc_group(size_t size, enum MALLOC_CLASS mclass = MALLOC_LOCAL,size_t group = NONE_GROUP);
+#else
+void *zcalloc_group(size_t size, enum MALLOC_CLASS mclass,size_t group);
+#endif
+
+
+//int get_size_sum(void *mem);
+//int zget_size_sum(void *mem);
+#endif
 
 #ifdef HAVE_DEFRAG
 void zfree_no_tcache(void *ptr);

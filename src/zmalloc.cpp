@@ -48,6 +48,10 @@ extern "C" void zlibc_free(void *ptr) {
 #include "zmalloc.h"
 #include "atomicvar.h"
 
+//#include "mdc.h"
+//#include "malloc_group.h"
+#include "../deps/malloc_group/include/malloc.h"
+
 #ifdef HAVE_MALLOC_SIZE
 #define PREFIX_SIZE (0)
 #define ASSERT_NO_SIZE_OVERFLOW(sz)
@@ -105,6 +109,79 @@ static void zmalloc_default_oom(size_t size) {
 }
 
 static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
+
+//cgmin---------------------------------------------------------
+#ifdef GROUP_ON
+
+//extern void *__zmalloc_group(size_t size, size_t group);
+//extern int zget_size_sum(void *mem);
+
+void *zmalloc_group(size_t size, enum MALLOC_CLASS,  size_t group) 
+{
+    void *ptr = ztrymalloc_usable_group(size, NULL,group);
+    if (!ptr) zmalloc_oom_handler(size);
+    return ptr;
+}
+
+void *ztrymalloc_usable_group(size_t size, size_t *usable,size_t group) {
+    ASSERT_NO_SIZE_OVERFLOW(size);
+//    void *ptr = malloc(MALLOC_MIN_SIZE(size)+PREFIX_SIZE, MALLOC_LOCAL);
+//    void *ptr = __zmalloc_group(MALLOC_MIN_SIZE(size)+PREFIX_SIZE,group);
+    void *ptr = malloc_group(MALLOC_MIN_SIZE(size)+PREFIX_SIZE,group);
+
+    if (!ptr) return NULL;
+#ifdef HAVE_MALLOC_SIZE
+    size = zmalloc_size(ptr);
+    update_zmalloc_stat_alloc(size);
+    if (usable) *usable = size;
+    return ptr;
+#else
+    *((size_t*)ptr) = size;
+    update_zmalloc_stat_alloc(size+PREFIX_SIZE);
+    if (usable) *usable = size;
+    return (char*)ptr+PREFIX_SIZE;
+#endif
+}
+
+void *zmalloc_usable_group(size_t size, size_t *usable, size_t group) {
+    void *ptr = ztrymalloc_usable_group(size, usable,group);
+    if (!ptr) zmalloc_oom_handler(size);
+    return ptr;
+}
+
+void *ztrycalloc_usable_group(size_t size, size_t *usable,size_t group) {
+    ASSERT_NO_SIZE_OVERFLOW(size);
+//    void *ptr = calloc(1, MALLOC_MIN_SIZE(size)+PREFIX_SIZE, MALLOC_LOCAL);
+//    void *ptr = __zmalloc_group(MALLOC_MIN_SIZE(size)+PREFIX_SIZE, group);
+    void *ptr = malloc_group(MALLOC_MIN_SIZE(size)+PREFIX_SIZE, group);
+// no calloc yet
+	memset(ptr,0,MALLOC_MIN_SIZE(size)+PREFIX_SIZE);
+    if (ptr == NULL) return NULL;
+
+#ifdef HAVE_MALLOC_SIZE
+    size = zmalloc_size(ptr);
+    update_zmalloc_stat_alloc(size);
+    if (usable) *usable = size;
+    return ptr;
+#else
+    *((size_t*)ptr) = size;
+    update_zmalloc_stat_alloc(size+PREFIX_SIZE);
+    if (usable) *usable = size;
+    return (char*)ptr+PREFIX_SIZE;
+#endif
+}
+
+void *zcalloc_group(size_t size, enum MALLOC_CLASS /*mclass*/,size_t group) {
+//    void *ptr = ztrycalloc_usable(size, NULL);
+    void *ptr = ztrycalloc_usable_group(size, NULL,group);
+    if (!ptr) zmalloc_oom_handler(size);
+    return ptr;
+}
+
+#endif
+//cgmin-------------------------------------------------------
+
+
 
 /* Try allocating memory, and return NULL if failed.
  * '*usable' is set to the usable size if non NULL. */

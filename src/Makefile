@@ -100,6 +100,7 @@ endif
 
 ifeq ($(COMPILER_NAME),clang)
 	CXXFLAGS+= -stdlib=libc++ 
+#cgmin libc dup
 endif
 
 # To get ARM stack traces if KeyDB crashes we need a special C flag.
@@ -385,8 +386,8 @@ endif
 
 REDIS_SERVER_NAME=keydb-server$(PROG_SUFFIX)
 REDIS_SENTINEL_NAME=keydb-sentinel$(PROG_SUFFIX)
-REDIS_SERVER_OBJ=adlist.o quicklist.o ae.o anet.o dict.o server.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o t_nhash.o config.o aof.o pubsub.o multi.o debug.o sort.o intset.o syncio.o cluster.o crc16.o endianconv.o slowlog.o scripting.o bio.o rio.o rand.o memtest.o crcspeed.o crc64.o bitops.o sentinel.o notify.o setproctitle.o blocked.o hyperloglog.o latency.o sparkline.o redis-check-rdb.o redis-check-aof.o geo.o lazyfree.o module.o evict.o expire.o geohash.o geohash_helper.o childinfo.o defrag.o siphash.o rax.o t_stream.o listpack.o localtime.o acl.o storage.o rdb-s3.o fastlock.o new.o tracking.o cron.o connection.o tls.o sha256.o motd_server.o timeout.o setcpuaffinity.o AsyncWorkQueue.o snapshot.o storage/teststorageprovider.o keydbutils.o StorageCache.o monotonic.o cli_common.o mt19937-64.o meminfo.o mdc.o $(ASM_OBJ) $(STORAGE_OBJ)
-#mdc
+REDIS_SERVER_OBJ=adlist.o quicklist.o ae.o anet.o dict.o server.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o t_nhash.o config.o aof.o pubsub.o multi.o debug.o sort.o intset.o syncio.o cluster.o crc16.o endianconv.o slowlog.o scripting.o bio.o rio.o rand.o memtest.o crcspeed.o crc64.o bitops.o sentinel.o notify.o setproctitle.o blocked.o hyperloglog.o latency.o sparkline.o redis-check-rdb.o redis-check-aof.o geo.o lazyfree.o module.o evict.o expire.o geohash.o geohash_helper.o childinfo.o defrag.o siphash.o rax.o t_stream.o listpack.o localtime.o acl.o storage.o rdb-s3.o fastlock.o new.o tracking.o cron.o connection.o tls.o sha256.o motd_server.o timeout.o setcpuaffinity.o AsyncWorkQueue.o snapshot.o storage/teststorageprovider.o keydbutils.o StorageCache.o monotonic.o cli_common.o mt19937-64.o meminfo.o mdc.o malloc_group.o $(ASM_OBJ) $(STORAGE_OBJ)
+#cgmin mdc
 KEYDB_SERVER_OBJ=SnapshotPayloadParseState.o
 REDIS_CLI_NAME=keydb-cli$(PROG_SUFFIX)
 REDIS_CLI_OBJ=anet.o adlist.o dict.o redis-cli.o redis-cli-cpphelper.o zmalloc.o release.o anet.o ae.o crcspeed.o crc64.o siphash.o crc16.o storage-lite.o fastlock.o motd_client.o monotonic.o cli_common.o mt19937-64.o $(ASM_OBJ)
@@ -445,9 +446,24 @@ else
 endif
 	@touch $@
 
+#cgmin
+#MG_OBJ=malloc_group.o
+#$(MG_OBJ): 
+#	$(REDIS_CC) -c malloc_group/malloc_group.c #-L../deps/malloc_group/lib/libc.a -I../deps/malloc_group/include# -Wl,--rpath=../deps/malloc_group/lib -Wl,--dynamic-linker=../deps/malloc_group/lib/ld-linux-x86-64.so.2
+
+#MGF := -L../deps/malloc_group/lib -I../deps/malloc_group/include
+
+#MGF := -L../deps/malloc_group/lib -I../deps/malloc_group/include -Wl,--rpath=../deps/malloc_group/lib -Wl,--dynamic-linker=../deps/malloc_group/lib/ld-linux-x86-64.so.2
+MGF := -L/home/dcslab/KeyDB/deps/malloc_group/lib -I/home/dcslab/KeyDB/deps/malloc_group/include -Wl,--rpath=/home/dcslab/KeyDB/deps/malloc_group/lib -Wl,--dynamic-linker=/home/dcslab/KeyDB/deps/malloc_group/lib/ld-linux-x86-64.so.2
+
+#MG_OBJ=""
+#MGF=""
+
+#FINAL_LIBS+= ../deps/malloc_group/lib/libc.a
+
 # keydb-server
-$(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ) $(KEYDB_SERVER_OBJ)
-	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(FINAL_LIBS)
+$(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ) $(KEYDB_SERVER_OBJ) $(MG_OBJ)
+	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(FINAL_LIBS) ${MGF}
 
 # keydb-sentinel
 $(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)
@@ -462,16 +478,16 @@ $(REDIS_CHECK_AOF_NAME): $(REDIS_SERVER_NAME)
 	$(REDIS_INSTALL) $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME)
 
 # keydb-cli
-$(REDIS_CLI_NAME): $(REDIS_CLI_OBJ)
-	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(FINAL_LIBS)
+$(REDIS_CLI_NAME): $(REDIS_CLI_OBJ) $(MG_OBJ)
+	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(FINAL_LIBS)  ${MGF}
 
 # keydb-benchmark
-$(REDIS_BENCHMARK_NAME): $(REDIS_BENCHMARK_OBJ)
-	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/hdr_histogram/hdr_histogram.o $(FINAL_LIBS)
+$(REDIS_BENCHMARK_NAME): $(REDIS_BENCHMARK_OBJ) $(MG_OBJ)
+	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/hdr_histogram/hdr_histogram.o $(FINAL_LIBS)  ${MGF}
 
 # keydb-diagnostic-tool
-$(KEYDB_DIAGNOSTIC_NAME): $(KEYDB_DIAGNOSTIC_OBJ)
-	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a $(FINAL_LIBS)
+$(KEYDB_DIAGNOSTIC_NAME): $(KEYDB_DIAGNOSTIC_OBJ) ${MG_OBJ}
+	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a $(FINAL_LIBS) ${MGF}
 
 DEP = $(REDIS_SERVER_OBJ:%.o=%.d) $(KEYDB_SERVER_OBJ:%.o=%.d) $(REDIS_CLI_OBJ:%.o=%.d) $(REDIS_BENCHMARK_OBJ:%.o=%.d)
 -include $(DEP)

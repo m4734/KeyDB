@@ -17,8 +17,10 @@
 
 #include "mdc.h"
 
-//#include "../deps/malloc_group/include/malloc.h"
-//#include "malloc_group.h" // not now
+#ifdef GROUP_ON
+#include "../deps/malloc_group/include/malloc.h"
+//#include "malloc_group.h"
+#endif
 #include <pthread.h>
 
 #define MADV_PAGE_UNIT 0
@@ -242,6 +244,9 @@ static void close_file_for_vma_info(FILE *fp)
 
 static int fill_vma_info(char *line, struct vma_info *vma)
 {
+#if DEBUG3
+		printf("line %s\n",line);
+#endif
 	char *p = strchr(line,'-');
 	char *p2= strchr(line,' ');
 	if (p && p2) {
@@ -250,7 +255,7 @@ static int fill_vma_info(char *line, struct vma_info *vma)
 		vma->start = strtoul(line,NULL,16);
 		p++;
 		vma->end = strtoul(p,NULL,16);
-#if DEBUG | DEBUG2
+#if DEBUG | DEBUG2 | DEBUG3
 		printf("%lx-%lx\n", vma->start, vma->end);
 #endif
 
@@ -644,6 +649,7 @@ static int __perform_memory_dump_in_batch(struct transactional_data *trx_data,
 		addr += PAGE_SIZE;
 	}
 #if DEBUG
+//#if 1
 	if (nr_non_present_pages)
 		printf("nr_non_present_pages = %d\n", nr_non_present_pages);
 #endif
@@ -696,7 +702,7 @@ static int get_page_residency(unsigned char *residency_vec,
 		printf("%s: mincore error %d\n", __func__, errno);
 		return -1;
 	} else {
-#if 1
+#if 0
 		size_t i;
 		for (i = 0; i < nr_pages; i++) {
 			printf("residency_vec[%lu]=%x\n", i, residency_vec[i]);
@@ -764,7 +770,8 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 		   target_vma->size_sum[i] = zget_size_sum(((void *)(target_vma->start+i*4096)));
 		 */
 #if ENABLE_MALLOC_GROUP
-		target_vma->size_sum[index] = zget_size_sum(((void *)(target_vma->start+index*4096)));
+		target_vma->size_sum[index] = get_size_sum(((void *)(target_vma->start+index*4096)));
+//		target_vma->size_sum[index] = zget_size_sum(((void *)(target_vma->start+index*4096)));
 #endif
 		//	target_vma->size_sum[index] = 4096; // cgmin test
 	}
@@ -780,26 +787,28 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 #if ENABLE_MALLOC_GROUP
 	if (target_vma->size_sum[index] == target_vma->size_cnt[index]/* && target_vma->dumped2[index]*/) //cgmin VAL
 #else
-	if (target_vma->size_sum[index] == target_vma->size_cnt[index] && target_vma->dumped2[index]) //cgmin VAL
+		if (target_vma->size_sum[index] == target_vma->size_cnt[index] && target_vma->dumped2[index]) //cgmin VAL
 #endif
-	{
-		//target_vma->dumped2[index] = 1;
-		//return;
-		//printf("madvise %p ",((void *)(target_vma->start+index*4096)));
-		if(/*index > 0 && */madvise((void *)(target_vma->start+index*4096),4096,MADV_DONTNEED2)) // index 0 has heap metadata // not only 0 more pages have metadata
-			printf("madvise error\n");
+		{
+			//target_vma->dumped2[index] = 1;
+			//return;
+			//printf("madvise %p ",((void *)(target_vma->start+index*4096)));
+//			if(/*index > 0 && */madvise((void *)(target_vma->start+index*4096),4096,MADV_DONTNEED2)) // index 0 has heap metadata // not only 0 more pages have metadata
+			if(/*index > 0 && */madvise((void *)(target_vma->start+index*4096),4096,MADV_DONTNEED)) // index 0 has heap metadata // not only 0 more pages have metadata
 
-		mc++;
+				printf("madvise error\n");
 
-		//printf("mc %d madvise end\n",mc);
-	}
-	else if (target_vma->size_cnt[index] > target_vma->size_sum[index])
-	{
-		printf("size cnt big %d sum %d index %d\n",target_vma->size_cnt[index],target_vma->size_sum[index],index);
-		if (index > 0)
-			printf("-1 size cnt big %d sum %d\n",target_vma->size_cnt[index-1],target_vma->size_sum[index-1]);
-		printf("+1 size cnt big %d sum %d\n",target_vma->size_cnt[index+1],target_vma->size_sum[index+1]);
-	}
+			mc++;
+
+			//printf("mc %d madvise end\n",mc);
+		}
+		else if (target_vma->size_cnt[index] > target_vma->size_sum[index])
+		{
+			printf("size cnt big %d sum %d index %d\n",target_vma->size_cnt[index],target_vma->size_sum[index],index);
+			if (index > 0)
+				printf("-1 size cnt big %d sum %d\n",target_vma->size_cnt[index-1],target_vma->size_sum[index-1]);
+			printf("+1 size cnt big %d sum %d\n",target_vma->size_cnt[index+1],target_vma->size_sum[index+1]);
+		}
 #endif
 }
 
@@ -817,7 +826,7 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 		printf("%s: save_vma_info failed\n", __func__);
 		return -1;
 	}
-
+//	printf("bfroe loop================ %p %p\n",target_vma->start,target_vma->end);
 	for (page_addr = target_vma->start; page_addr < target_vma->end;
 			page_addr += BATCH_UNIT_IN_BYTES) {
 		unsigned char residency_vec[BATCH_UNIT_IN_PAGES];
@@ -856,7 +865,7 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 		clock_gettime(CLOCK_MONOTONIC,&ts2);
 		dump_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
 
-//#ifdef GROUP_ON
+		//#ifdef GROUP_ON
 #if (MDC_TYPE == 3)
 		//cgmin madvise --------------------------------------------------------------
 		//batch doesn't have start end addr
@@ -872,21 +881,31 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 			}
 		}
 #endif
-#if MADVISE_UNIT_TYPE == MADV_DUMP_UNIT
+
+#if MADVISE_UNIT_TYPE == MADV_DUMP_UNIT // here
 #if 0
 		if (munlock((void *)page_addr, size)) {
 			printf("mulock failed %d addr:%lx size:%lx\n", 
 					errno, page_addr, size);
 		}
 #endif
-#endif
 #if (MDC_TYPE == 1)
 		if (free_after_write) { //cgmin size_sum // original mdc
+#if 1
+			if (page_addr == NULL || size != 262144)
+				printf("madvise %p %ld\n",page_addr,size);
+#else // kernel panic
+//			printf("before madvixse\n");
+
 			if (madvise((void *)page_addr, size, MADV_DONTNEED2)) {
 				printf("madvise with dump unit failed %d\n", errno);
 				return -1;
 			}
+
+//			printf("after madvise\n");
+#endif
 		}
+#endif
 #endif
 
 		clock_gettime(CLOCK_MONOTONIC,&ts1);
@@ -913,6 +932,8 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 	}
 #endif
 #endif
+//	printf("after loop================\n");
+
 #if DEBUG
 	print_vma_table(&trx_data->vma_table);
 	//print_bitmap_table(&trx_data->bm_table);
@@ -1129,7 +1150,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 	struct address_space_table *as_table;
 
 	// cgmin doesn't access the buf
-//#if ENABLE_MALLOC_GROUP
+	//#if ENABLE_MALLOC_GROUP
 #ifndef MDC_ON
 	//always write value itself
 	size_t ret = fwrite(buf, size, count, fp);
@@ -1158,31 +1179,31 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 	{
 		target_vma->stored = 1;
 		//printf("vma %lx %lx\n",target_vma->start,target_vma->end);
-	//		perform_memory_dump_for_vma(&global_trx.trx_data, target_vma,0);
+		//		perform_memory_dump_for_vma(&global_trx.trx_data, target_vma,0);
 #ifdef THREAD2
 		new_vma = 1; // reaquest new dup
 #endif
 	}
 
-// can not understand this part.....
-/*
+	// can not understand this part.....
+	/*
 
 #ifdef THREAD1
-//#ifndef THREAD2
-// there is no dump rqeust and this thread do dump
+	//#ifndef THREAD2
+	// there is no dump rqeust and this thread do dump
 	//		size_sum+=size;
 	size_sum++; // what is this size sum and why 4????
 	while (size_sum >= 4)//096) //cgmin
 	{
-		//			write(global_trx.trx_data.dump_fd,xxx,4096);
-		//			perform_memory_dump_for_vma_partial(&global_trx.trx_data,1,0);
-		perform_memory_dump_for_vma_partial(&global_trx.trx_data,1,1);
+	//			write(global_trx.trx_data.dump_fd,xxx,4096);
+	//			perform_memory_dump_for_vma_partial(&global_trx.trx_data,1,0);
+	perform_memory_dump_for_vma_partial(&global_trx.trx_data,1,1);
 
-		size_sum-=4;//096;
+	size_sum-=4;//096;
 	}
 #endif
 
-*/
+	 */
 
 #if 0
 	struct timespec start, end;
@@ -1314,7 +1335,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 
 
 #ifndef MDC_ON
-	type = CHKPOINT_VAL;
+		type = CHKPOINT_VAL;
 #endif
 
 
@@ -1335,7 +1356,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 #ifdef CGMIN_DEBUG
 				printf("REF %p %lu\n",buf,size); //cgmin test
 #endif
-//				printf("REF %p %lu\n",buf,size); //cgmin test
+				//				printf("REF %p %lu\n",buf,size); //cgmin test
 
 				ret = mdc_fwrite_for_chkpointing_reference(buf, size, count, fp);
 
@@ -1474,29 +1495,31 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 		struct transactional_data *trx_data = &global_trx.trx_data;
 		printf("madvise mc %d nmc %d\n",mc,nmc);
 #if (MDC_TYPE == 1)
-		   if (free_after_write) {
-		   if (perform_memory_dump_for_each_vma_and_free(trx_data)) {
-		   printf("%s: memory dump and free failed\n",__func__);
-		   return -1;
-		   }
-		   } else {
-		   if (perform_memory_dump_for_each_vma(trx_data)) {
-		   printf("%s: memory dump failed\n",__func__);
-		   return -1;
-		   }
-		   }
+		if (free_after_write) {
+//			printf("before dump--------------------------\n");
+			if (perform_memory_dump_for_each_vma_and_free(trx_data)) {
+				printf("%s: memory dump and free failed\n",__func__);
+				return -1;
+			}
+//			printf("after dump-----------------------------\n");
+		} else {
+			if (perform_memory_dump_for_each_vma(trx_data)) {
+				printf("%s: memory dump failed\n",__func__);
+				return -1;
+			}
+		}
 #else
+
 #ifdef THREAD1
 		//	perform_memory_dump_for_vma_partial(trx_data,0,0);//cgmin
 		perform_memory_dump_for_vma_partial(trx_data,0,1);//cgmin
 #endif
-
 #ifdef THREAD2
 		dump_exit=1;
 		pthread_join(dump_thread,NULL);
 #endif
-#endif
 
+#endif
 		cleanup_for_checkpointing(trx_data);
 		finalize_transaction();
 		if (rename_files(tmpfile,newfile)) {
@@ -1726,8 +1749,8 @@ error_free_vma_table:
 
 #if DEBUG_TIME2
 		vs_time = 0;//cgmin
-//		ttt1 = ttt2 = ttt3 = ttt4 = ttt5 = 0;
-//		ttt6 = ttt7 = 0;
+		//		ttt1 = ttt2 = ttt3 = ttt4 = ttt5 = 0;
+		//		ttt6 = ttt7 = 0;
 #endif
 
 #if DEBUG
@@ -1918,285 +1941,285 @@ error_free_vma_table:
 #if ENABLE_MALLOC_GROUP
 				{ //< 1024) { //cgmin //cgmin VAL now
 #else
-				if (size < 128) {
+					if (size < 128) {
 #endif
+#if DEBUG_TIME
+						clock_gettime(CLOCK_MONOTONIC, &start);
+#endif
+						size_t ret = fread(buf, size, count, fp);
+						if (ret != count)
+							return -1;
+#if DEBUG_TIME
+						clock_gettime(CLOCK_MONOTONIC, &end);
+						_fread_original_time += get_time_difference_ns(&end, &start);
+						total_time += get_time_difference_ns(&end, &start);
+#endif
+						return 0;
+					}
 #if DEBUG_TIME
 					clock_gettime(CLOCK_MONOTONIC, &start);
 #endif
-					size_t ret = fread(buf, size, count, fp);
-					if (ret != count)
+					size_t address;
+					size_t ret = fread(&address, POINTER_SIZE_IN_BYTES,1,fp);
+					if (ret != 1) {
 						return -1;
+					}
+#if DEBUG_TIME
+					clock_gettime(CLOCK_MONOTONIC, &mid);
+					_fread_time += get_time_difference_ns(&mid, &start);
+					clock_gettime(CLOCK_MONOTONIC, &mid2);
+#endif
+
+					size_t bytes = get_object_from_dump(buf, size, address, trx_data);
 #if DEBUG_TIME
 					clock_gettime(CLOCK_MONOTONIC, &end);
-					_fread_original_time += get_time_difference_ns(&end, &start);
+#endif
+					if (bytes != (size * count)) //cgmin size
+						return -1;
+#if DEBUG_TIME
+					_object_time += get_time_difference_ns(&end, &mid2);
 					total_time += get_time_difference_ns(&end, &start);
 #endif
 					return 0;
 				}
-#if DEBUG_TIME
-				clock_gettime(CLOCK_MONOTONIC, &start);
-#endif
-				size_t address;
-				size_t ret = fread(&address, POINTER_SIZE_IN_BYTES,1,fp);
-				if (ret != 1) {
-					return -1;
 				}
-#if DEBUG_TIME
-				clock_gettime(CLOCK_MONOTONIC, &mid);
-				_fread_time += get_time_difference_ns(&mid, &start);
-				clock_gettime(CLOCK_MONOTONIC, &mid2);
-#endif
 
-				size_t bytes = get_object_from_dump(buf, size, address, trx_data);
-#if DEBUG_TIME
-				clock_gettime(CLOCK_MONOTONIC, &end);
-#endif
-				if (bytes != (size * count)) //cgmin size
-					return -1;
-#if DEBUG_TIME
-				_object_time += get_time_difference_ns(&end, &mid2);
-				total_time += get_time_difference_ns(&end, &start);
-#endif
-				return 0;
-				}
-			}
-
-			static size_t mdc_fread_for_restoring_value(void *buf,
-					size_t size, size_t count, FILE *fp)
-			{
-#if DEBUG
-				printf(">> fread(buf:%p, size:%lu, count:%lu, fp:%p, type:%s)\n", 
-						buf, size, count, fp, "CHKPOINT_VAL");
-#endif
-				return fread(buf, size, count, fp);
-			}
-
-			size_t mdc_fread(void *buf, size_t size, size_t count, FILE *fp, int type)
-			{
-				size_t result = 0;
-				size_t ret = 0;
-				switch (type) {
-					case CHKPOINT_VAL:
-						result = mdc_fread_for_restoring_value(buf, size, count, fp);
-						break;
-					case CHKPOINT_REF:
-						ret = mdc_fread_for_restoring_reference(buf, size, count, fp);
-
-						if (!ret)
-							result = count;
-						break;
-					default:
-						break;
-				}
-				return result;
-			}
-
-
-
-			static inline void close_files_for_restoring(
-					struct transactional_data *trx_data)
-			{
-				__close_files(trx_data);
-			}
-
-			void restore_end(void)
-			{
-
-				//cgmin
-#if 0
-				free(global_num_in_page);
-				int i;
-				for (i=0;i<MAX_IN_PAGE;i++)
+				static size_t mdc_fread_for_restoring_value(void *buf,
+						size_t size, size_t count, FILE *fp)
 				{
-					free(global_ref_file_position[i]);
-					free(global_ref_dbid[i]);
-				}
+#if DEBUG
+					printf(">> fread(buf:%p, size:%lu, count:%lu, fp:%p, type:%s)\n", 
+							buf, size, count, fp, "CHKPOINT_VAL");
 #endif
-				struct transactional_data *trx_data = &global_trx.trx_data;
-				close_files_for_restoring(trx_data);
-				munmap(trx_data->dump_mmap_addr, trx_data->dump_mmap_size);
-				free_vma_table(&trx_data->vma_table);
-				free_bitmap_table(&trx_data->bm_table);
-				finalize_transaction();
+					return fread(buf, size, count, fp);
+				}
+
+				size_t mdc_fread(void *buf, size_t size, size_t count, FILE *fp, int type)
+				{
+					size_t result = 0;
+					size_t ret = 0;
+					switch (type) {
+						case CHKPOINT_VAL:
+							result = mdc_fread_for_restoring_value(buf, size, count, fp);
+							break;
+						case CHKPOINT_REF:
+							ret = mdc_fread_for_restoring_reference(buf, size, count, fp);
+
+							if (!ret)
+								result = count;
+							break;
+						default:
+							break;
+					}
+					return result;
+				}
+
+
+
+				static inline void close_files_for_restoring(
+						struct transactional_data *trx_data)
+				{
+					__close_files(trx_data);
+				}
+
+				void restore_end(void)
+				{
+
+					//cgmin
+#if 0
+					free(global_num_in_page);
+					int i;
+					for (i=0;i<MAX_IN_PAGE;i++)
+					{
+						free(global_ref_file_position[i]);
+						free(global_ref_dbid[i]);
+					}
+#endif
+					struct transactional_data *trx_data = &global_trx.trx_data;
+					close_files_for_restoring(trx_data);
+					munmap(trx_data->dump_mmap_addr, trx_data->dump_mmap_size);
+					free_vma_table(&trx_data->vma_table);
+					free_bitmap_table(&trx_data->bm_table);
+					finalize_transaction();
 #if DEBUG_TIME
-				/*
-				   printf("Total read time: %ld sec\n"
-				   "-- fread original time: %ld sec\n"
-				   "-- fread time: %ld sec\n"
-				   "-- object time: %ld sec\n"
-				   "---- file offset time: %ld sec\n"
-				   "---- pread time: %ld sec\n",
-				   total_time/1000000000,
-				   _fread_original_time/1000000000,
-				   _fread_time/1000000000,
-				   _object_time/1000000000,
-				   __file_offset_time/1000000000,
-				   __pread_time/1000000000);
-				 */
-				printf("Total read time: %ld sec\n"
-						"-- fread original time: %ld sec\n"
-						"-- fread time: %ld sec\n"
-						"-- object time: %ld sec\n"
-						"---- file offset time: %ld sec\n"
-						"---- pread time: %ld sec\n",
-						total_time,
-						_fread_original_time,
-						_fread_time,
-						_object_time,
-						__file_offset_time,
-						__pread_time);
+					/*
+					   printf("Total read time: %ld sec\n"
+					   "-- fread original time: %ld sec\n"
+					   "-- fread time: %ld sec\n"
+					   "-- object time: %ld sec\n"
+					   "---- file offset time: %ld sec\n"
+					   "---- pread time: %ld sec\n",
+					   total_time/1000000000,
+					   _fread_original_time/1000000000,
+					   _fread_time/1000000000,
+					   _object_time/1000000000,
+					   __file_offset_time/1000000000,
+					   __pread_time/1000000000);
+					 */
+					printf("Total read time: %ld sec\n"
+							"-- fread original time: %ld sec\n"
+							"-- fread time: %ld sec\n"
+							"-- object time: %ld sec\n"
+							"---- file offset time: %ld sec\n"
+							"---- pread time: %ld sec\n",
+							total_time,
+							_fread_original_time,
+							_fread_time,
+							_object_time,
+							__file_offset_time,
+							__pread_time);
 
 #endif
 
 #if DEBUG_TIME2
-				printf("vs_time %ld\n",vs_time); //cgmin
-//				printf("key %ld val %ld dbadd %ld\n",ttt1,ttt2,ttt3);
-//				printf("hase zip %ld zset2 %ld\n",ttt4,ttt5);
-//				printf("zmalloc %ld rioRead %ld\n",ttt6,ttt7);
+					printf("vs_time %ld\n",vs_time); //cgmin
+					//				printf("key %ld val %ld dbadd %ld\n",ttt1,ttt2,ttt3);
+					//				printf("hase zip %ld zset2 %ld\n",ttt4,ttt5);
+					//				printf("zmalloc %ld rioRead %ld\n",ttt6,ttt7);
 #endif
 
-				//printf("\n>> restore_end()\n");
-			}
+					//printf("\n>> restore_end()\n");
+				}
 
-			struct vma_info *global_target_vma = NULL;
-			unsigned long global_page_addr;
-			unsigned long global_end_addr;
-			unsigned char global_residency_vec[BATCH_UNIT_IN_PAGES];
-			unsigned long global_dump_addr;
-			int global_residency_index;
-			int global_nr_pages;
+				struct vma_info *global_target_vma = NULL;
+				unsigned long global_page_addr;
+				unsigned long global_end_addr;
+				unsigned char global_residency_vec[BATCH_UNIT_IN_PAGES];
+				unsigned long global_dump_addr;
+				int global_residency_index;
+				int global_nr_pages;
 #ifdef THREAD1 // can not udnerdstnad
-			static int perform_memory_dump_for_vma_partial(struct transactional_data *trx_data,
-					int partial, int free_after_write) //cgmin
-			{
-				unsigned long page_addr;
-				struct timespec ts1,ts2;
-				struct vma_info *target_vma;
-				if (new_vma == 0)
-					return 0;
-retry:
-				if (global_target_vma == NULL)
+				static int perform_memory_dump_for_vma_partial(struct transactional_data *trx_data,
+						int partial, int free_after_write) //cgmin
 				{
-					struct address_space_table *table=&trx_data->as_table;
-					for (int cursor=0;cursor < table->nr_entries;cursor++)
-					{
-						if (table->table[cursor].stored == 1 && table->table[cursor].dumped == 0)
-						{
-							global_target_vma = &table->table[cursor];
-							table->table[cursor].dumped = 1;
-							if (partial)
-								break;
-							else
-								perform_memory_dump_for_vma(trx_data,global_target_vma,free_after_write);
-						}
-					}
-					if (partial == 0)
+					unsigned long page_addr;
+					struct timespec ts1,ts2;
+					struct vma_info *target_vma;
+					if (new_vma == 0)
 						return 0;
-					if ( global_target_vma == NULL)
+retry:
+					if (global_target_vma == NULL)
 					{
-						new_vma = 0;
-						//printf("global target vma failed\n");
-						return 1; // fail?
+						struct address_space_table *table=&trx_data->as_table;
+						for (int cursor=0;cursor < table->nr_entries;cursor++)
+						{
+							if (table->table[cursor].stored == 1 && table->table[cursor].dumped == 0)
+							{
+								global_target_vma = &table->table[cursor];
+								table->table[cursor].dumped = 1;
+								if (partial)
+									break;
+								else
+									perform_memory_dump_for_vma(trx_data,global_target_vma,free_after_write);
+							}
+						}
+						if (partial == 0)
+							return 0;
+						if ( global_target_vma == NULL)
+						{
+							new_vma = 0;
+							//printf("global target vma failed\n");
+							return 1; // fail?
+						}
+						target_vma = global_target_vma;
+						global_page_addr = target_vma->start;
+						global_end_addr = target_vma->start; //global_page_addr + BATCH_UNIT_IN_BYTES; 
+
+						//initial target vma
+						if (save_vma_info(trx_data, target_vma)) {
+							printf("%s: save_vma_info failed\n", __func__);
+							return -1;
+						}
+
 					}
 					target_vma = global_target_vma;
-					global_page_addr = target_vma->start;
-					global_end_addr = target_vma->start; //global_page_addr + BATCH_UNIT_IN_BYTES; 
+					page_addr = global_page_addr;
 
-					//initial target vma
-					if (save_vma_info(trx_data, target_vma)) {
-						printf("%s: save_vma_info failed\n", __func__);
-						return -1;
-					}
-
-				}
-				target_vma = global_target_vma;
-				page_addr = global_page_addr;
-
-				if (page_addr >= global_end_addr) // per batch
-				{
-					if (page_addr >= global_target_vma->end) // end of vma
+					if (page_addr >= global_end_addr) // per batch
 					{
-						global_target_vma = NULL;
-						//			return 2; //retry
-						goto retry;
-					}
-					//		unsigned char residency_vec[BATCH_UNIT_IN_PAGES];
-					unsigned char *residency_vec = (unsigned char*)&global_residency_vec;
-					unsigned long end_addr;
-					size_t nr_pages;
-					size_t size;
-					struct bitmap_entry *be = get_free_bitmap_entry(&trx_data->bm_table);
-					end_addr = get_end_address_in_current_batch(page_addr, target_vma->end);
-					size = end_addr - page_addr;
-					nr_pages = size >> PAGE_SHIFT;
+						if (page_addr >= global_target_vma->end) // end of vma
+						{
+							global_target_vma = NULL;
+							//			return 2; //retry
+							goto retry;
+						}
+						//		unsigned char residency_vec[BATCH_UNIT_IN_PAGES];
+						unsigned char *residency_vec = (unsigned char*)&global_residency_vec;
+						unsigned long end_addr;
+						size_t nr_pages;
+						size_t size;
+						struct bitmap_entry *be = get_free_bitmap_entry(&trx_data->bm_table);
+						end_addr = get_end_address_in_current_batch(page_addr, target_vma->end);
+						size = end_addr - page_addr;
+						nr_pages = size >> PAGE_SHIFT;
 
-					global_residency_index=0;
-					global_end_addr = end_addr;
-					global_nr_pages = nr_pages;
+						global_residency_index=0;
+						global_end_addr = end_addr;
+						global_nr_pages = nr_pages;
 
 
-					clock_gettime(CLOCK_MONOTONIC,&ts1);
-					if (get_page_residency(residency_vec, page_addr, nr_pages)) {
-						printf("%s: get_page_residency failed\n", __func__);
-						return -1;
-					}
-					clock_gettime(CLOCK_MONOTONIC,&ts2);
-					residency_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
-					clock_gettime(CLOCK_MONOTONIC,&ts1);
-					set_bitmap_entry_for_batch(trx_data, be, residency_vec, nr_pages);
-					clock_gettime(CLOCK_MONOTONIC,&ts2);
-					bitmap_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
+						clock_gettime(CLOCK_MONOTONIC,&ts1);
+						if (get_page_residency(residency_vec, page_addr, nr_pages)) {
+							printf("%s: get_page_residency failed\n", __func__);
+							return -1;
+						}
+						clock_gettime(CLOCK_MONOTONIC,&ts2);
+						residency_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
+						clock_gettime(CLOCK_MONOTONIC,&ts1);
+						set_bitmap_entry_for_batch(trx_data, be, residency_vec, nr_pages);
+						clock_gettime(CLOCK_MONOTONIC,&ts2);
+						bitmap_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
 #if MADVISE_UNIT_TYPE == MADV_DUMP_UNIT
 #if 0
-					if (mlock((void *)page_addr, size)) {
-						printf("mlock failed %d addr:%lx size:%lx\n", 
-								errno, page_addr, size);
-						return -1;
-					}
+						if (mlock((void *)page_addr, size)) {
+							printf("mlock failed %d addr:%lx size:%lx\n", 
+									errno, page_addr, size);
+							return -1;
+						}
 #endif
 #endif
-					/*
-					   clock_gettime(CLOCK_MONOTONIC,&ts1);
-					   if (__perform_memory_dump_in_batch(trx_data, page_addr, end_addr, residency_vec)) {
-					   printf("%s: __perform_memory_dump_in_batch failed\n", __func__);
-					   return -1;
-					   }
-					   clock_gettime(CLOCK_MONOTONIC,&ts2);
-					   dump_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
-					 */
+						/*
+						   clock_gettime(CLOCK_MONOTONIC,&ts1);
+						   if (__perform_memory_dump_in_batch(trx_data, page_addr, end_addr, residency_vec)) {
+						   printf("%s: __perform_memory_dump_in_batch failed\n", __func__);
+						   return -1;
+						   }
+						   clock_gettime(CLOCK_MONOTONIC,&ts2);
+						   dump_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
+						 */
 
 #if MADVISE_UNIT_TYPE == MADV_DUMP_UNIT
 #if 0
-					if (munlock((void *)page_addr, size)) {
-						printf("mulock failed %d addr:%lx size:%lx\n", 
-								errno, page_addr, size);
-					}
+						if (munlock((void *)page_addr, size)) {
+							printf("mulock failed %d addr:%lx size:%lx\n", 
+									errno, page_addr, size);
+						}
 #endif
-					//cgmin may not use
-					/*
-					   if (free_after_write) {
-					   if (madvise((void *)page_addr, size, MADV_DONTNEED2)) {
-					   printf("madvise with dump unit failed %d\n", errno);
-					   return -1;
-					   }
-					   }
-					 */
+						//cgmin may not use
+						/*
+						   if (free_after_write) {
+						   if (madvise((void *)page_addr, size, MADV_DONTNEED2)) {
+						   printf("madvise with dump unit failed %d\n", errno);
+						   return -1;
+						   }
+						   }
+						 */
 #endif
-					clock_gettime(CLOCK_MONOTONIC,&ts1);
+						clock_gettime(CLOCK_MONOTONIC,&ts1);
 
-					if (save_bitmap_table(trx_data, be)) {
-						printf("%s: save_bitmap_table failed\n", __func__);
-						return -1;
-					}
-					clock_gettime(CLOCK_MONOTONIC,&ts2);
-					bitmap2_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
+						if (save_bitmap_table(trx_data, be)) {
+							printf("%s: save_bitmap_table failed\n", __func__);
+							return -1;
+						}
+						clock_gettime(CLOCK_MONOTONIC,&ts2);
+						bitmap2_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
 
 #if DEBUG
-					printf("bitmap %lx, end_addr %lx\n", be->bitmap, end_addr);
+						printf("bitmap %lx, end_addr %lx\n", be->bitmap, end_addr);
 #endif
-				}
-				//cgmin may not use
-				/*
+					}
+					//cgmin may not use
+					/*
 #if MADVISE_UNIT_TYPE == MADV_VMA_UNIT
 if (free_after_write) {
 if (madvise((void *)target_vma->start, target_vma->end - target_vma->start, 
@@ -2210,7 +2233,7 @@ return -1;
 print_vma_table(&trx_data->vma_table);
 //print_bitmap_table(&trx_data->bm_table);
 #endif
-				 */
+					 */
 
 //page dump here
 clock_gettime(CLOCK_MONOTONIC,&ts1);

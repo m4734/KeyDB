@@ -35,6 +35,8 @@
 #include <ctype.h>
 #include <mutex>
 
+#include "mdc.h"
+
 #ifdef __CYGWIN__
 #define strtold(a,b) ((long double)strtod((a),(b)))
 #endif
@@ -43,7 +45,11 @@
 
 robj *createObject(int type, void *ptr) {
     size_t mvccExtraBytes = g_pserver->fActiveReplica ? sizeof(redisObjectExtended) : 0;
+#ifdef GROUP_ON
+    char *oB = (char*)zcalloc_group(sizeof(robj)+mvccExtraBytes, MALLOC_SHARED,META_GROUP);
+#else
     char *oB = (char*)zcalloc(sizeof(robj)+mvccExtraBytes, MALLOC_SHARED);
+#endif
     robj *o = reinterpret_cast<robj*>(oB + mvccExtraBytes);
     
     new (o) redisObject;
@@ -104,7 +110,11 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
         allocsize = sizeof(void*);
 
     size_t mvccExtraBytes = g_pserver->fActiveReplica ? sizeof(redisObjectExtended) : 0;
+#ifdef GROUP_ON
+    char *oB = (char*)zmalloc_group(sizeof(robj)+allocsize-sizeof(redisObject::m_ptr)+mvccExtraBytes, MALLOC_SHARED,META_GROUP);
+#else
     char *oB = (char*)zmalloc(sizeof(robj)+allocsize-sizeof(redisObject::m_ptr)+mvccExtraBytes, MALLOC_SHARED);
+#endif
     robj *o = reinterpret_cast<robj*>(oB + mvccExtraBytes);
     struct sdshdr8 *sh = (sdshdr8*)(&o->m_ptr);
 

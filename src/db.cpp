@@ -36,6 +36,8 @@
 #include <signal.h>
 #include <ctype.h>
 
+#include "mdc.h"
+
 // Needed for prefetch
 #if defined(__x86_64__) || defined(__i386__)
 #include <xmmintrin.h>
@@ -283,8 +285,11 @@ robj *lookupKeyWriteOrReply(client *c, robj *key, robj *reply) {
 
 bool dbAddCore(redisDb *db, sds key, robj *val, bool fUpdateMvcc, bool fAssumeNew = false, dict_iter *piterExisting = nullptr, bool fValExpires = false) {
     serverAssert(fValExpires || !val->FExpires());
-    sds copy = sdsdupshared(key);
-    
+#ifdef GROUP_ON // cgmin may disable this
+    sds copy = sdsdupshared_group(key,KEY_GROUP); // cgmin may need dup2 here for malloc_group
+#else
+    sds copy = sdsdupshared(key); // cgmin may need dup2 here for malloc_group
+#endif    
     uint64_t mvcc = getMvccTstamp();
     if (fUpdateMvcc) {
         setMvccTstamp(val, mvcc);

@@ -39,6 +39,8 @@
 #include "sds.h"
 #include "sdsalloc.h"
 
+#include "mdc.h" //cgmin
+
 const char *SDS_NOINIT = "SDS_NOINIT";
 
 static inline int sdsHdrSize(char type) {
@@ -94,6 +96,111 @@ static inline size_t sdsTypeMaxSize(char type) {
     return -1; /* this is equivalent to the max SDS_TYPE_64 or SDS_TYPE_32 */
 }
 
+#ifdef GROUP_ON
+
+sds _sdsnewlen_group(const void *init, ssize_t initlen, int trymalloc, size_t group) {
+    void *sh;
+    sds s;
+    char type = sdsReqType(initlen);
+    if (initlen < 0)
+        initlen = -initlen;
+    /* Empty strings are usually created in order to append. Use type 8
+     * since type 5 is not good at this. */
+    if (type == SDS_TYPE_5 && initlen == 0) type = SDS_TYPE_8;
+    int hdrlen = sdsHdrSize(type);
+    unsigned char *fp; /* flags pointer. */
+    size_t usable;
+
+    assert(initlen + hdrlen + 1 > initlen); /* Catch size_t overflow */
+#if 1
+#ifdef GROUP_ON // cgmin
+    sh = trymalloc?
+        ztrymalloc_usable_group(hdrlen+initlen+1, &usable,group) : // string value // may key
+        zmalloc_usable_group(hdrlen+initlen+1, &usable,group);
+#endif
+#else
+    sh = trymalloc?
+        s_trymalloc_usable(hdrlen+initlen+1, &usable) :
+        s_malloc_usable(hdrlen+initlen+1, &usable);
+#endif
+    if (sh == NULL) return NULL;
+    if (init==SDS_NOINIT)
+        init = NULL;
+    else if (!init)
+        memset(sh, 0, hdrlen+initlen+1);
+    s = (char*)sh+hdrlen;
+    fp = ((unsigned char*)s)-1;
+    usable = usable-hdrlen-1;
+    if (usable > sdsTypeMaxSize(type))
+        usable = sdsTypeMaxSize(type);
+    switch(type) {
+        case SDS_TYPE_5: {
+            *fp = type | (initlen << SDS_TYPE_BITS);
+            break;
+        }
+        case SDS_TYPE_8: {
+            SDS_HDR_VAR(8,s);
+            sh->len = initlen;
+            sh->alloc = usable;
+            *fp = type;
+            break;
+        }
+        case SDS_TYPE_16: {
+            SDS_HDR_VAR(16,s);
+            sh->len = initlen;
+            sh->alloc = usable;
+            *fp = type;
+            break;
+        }
+        case SDS_TYPE_32: {
+            SDS_HDR_VAR(32,s);
+            sh->len = initlen;
+            sh->alloc = usable;
+            *fp = type;
+            break;
+        }
+        case SDS_TYPE_64: {
+            SDS_HDR_VAR(64,s);
+            sh->len = initlen;
+            sh->alloc = usable;
+            *fp = type;
+            break;
+        }
+        case SDS_TYPE_REFCOUNTED: {
+            SDS_HDR_VAR_REFCOUNTED(s);
+            sh->len = initlen;
+            sh->refcount = 1;
+            *fp = type;
+            break;
+        }
+    }
+    if (initlen && init)
+        memcpy(s, init, initlen);
+    s[initlen] = '\0';
+    return s;
+}
+
+
+sds sdsnewlen_group(const void *init, ssize_t initlen,size_t group) {
+    return _sdsnewlen_group(init, initlen, 0,group);
+}
+
+sds sdsdupshared_group(const char *s,size_t group) {
+    if (s == NULL)
+        return NULL;
+    unsigned char flags = s[-1];
+    if ((flags & SDS_TYPE_MASK) != SDS_TYPE_REFCOUNTED)
+        return sdsnewlen_group(s, -sdslen(s),group);
+    SDS_HDR_VAR_REFCOUNTED(s);
+    __atomic_fetch_add(&sh->refcount, 1, __ATOMIC_RELAXED);
+    return (sds)s;
+}
+
+
+#endif
+
+
+
 /* Create a new sds string with the content specified by the 'init' pointer
  * and 'initlen'.
  * If NULL is used for 'init' the string is initialized with zero bytes.
@@ -121,9 +228,17 @@ sds _sdsnewlen(const void *init, ssize_t initlen, int trymalloc) {
     size_t usable;
 
     assert(initlen + hdrlen + 1 > initlen); /* Catch size_t overflow */
+#if 0
+#ifdef GROUP_ON // cgmin
+    sh = trymalloc?
+        ztrymalloc_usable_group(hdrlen+initlen+1, &usable,VALUE_GROUP) : // string value
+        zmalloc_usable_group(hdrlen+initlen+1, &usable,VALUE_GROUP);
+#endif
+#else
     sh = trymalloc?
         s_trymalloc_usable(hdrlen+initlen+1, &usable) :
         s_malloc_usable(hdrlen+initlen+1, &usable);
+#endif
     if (sh == NULL) return NULL;
     if (init==SDS_NOINIT)
         init = NULL;

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -8,12 +10,16 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
+//#ifndef MDC_DEF
+//#define MDE_DEF
+
 #define DEBUG 0
 #define DEBUG2 0
 #define DEBUG_TIME 0
 #define DEBUG_TIME2 0
+#define DEBUG3 1
 
-#define MDC_TYPE 1
+#define MDC_TYPE 2
 /*
 0 = original
 1 = mdc
@@ -28,7 +34,19 @@
 
 #if (MDC_TYPE == 2 || MDC_TYPE == 3)
 #define GROUP_ON 1
-#define ENABLE_MDCP 1
+#define ENABLE_MALLOC_GROUP 1
+#define REMOVE_MINCORE 1
+
+enum GROUP_NUM
+{
+	NONE_GROUP,
+	VALUE_GROUP,
+	META_GROUP,
+	KEY_GROUP
+};
+
+void check_end(void* buf);
+
 #endif
 
 // i think need one of these
@@ -41,7 +59,6 @@
 //#define ENABLE_MALLOC_GROUP 0
 //#define ENABLE_MDCP 1
 
-#define REMOVE_MINCORE 1
 
 //#if ENABLE_MDCP
 //	#define THREAD2
@@ -96,3 +113,5 @@ void set_file_position(FILE *fp,unsigned long);
 //size_t global_size[10000000]; //temp size
 //int gsn,gsi;
 
+
+//#endif
