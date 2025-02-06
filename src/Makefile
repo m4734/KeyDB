@@ -402,6 +402,7 @@ all: $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCH
 	@echo ""
 	@echo "Hint: It's a good idea to run 'make test' ;)"
 	@echo ""
+	@echo "$(MALLOC)"
 
 Makefile.dep:
 	-$(REDIS_CC) -MM *.c > Makefile.dep 2> /dev/null || true
@@ -447,14 +448,21 @@ endif
 	@touch $@
 
 #cgmin
-#MG_OBJ=malloc_group.o
+MG_OBJ=malloc_group.o
 #$(MG_OBJ): 
-#	$(REDIS_CC) -c malloc_group/malloc_group.c #-L../deps/malloc_group/lib/libc.a -I../deps/malloc_group/include# -Wl,--rpath=../deps/malloc_group/lib -Wl,--dynamic-linker=../deps/malloc_group/lib/ld-linux-x86-64.so.2
+#	$(REDIS_CXX) -c malloc_group.cpp malloc_group.h #-L../deps/malloc_group/lib/libc.a -I../deps/malloc_group/include# -Wl,--rpath=../deps/malloc_group/lib -Wl,--dynamic-linker=../deps/malloc_group/lib/ld-linux-x86-64.so.2
 
 #MGF := -L../deps/malloc_group/lib -I../deps/malloc_group/include
 
 #MGF := -L../deps/malloc_group/lib -I../deps/malloc_group/include -Wl,--rpath=../deps/malloc_group/lib -Wl,--dynamic-linker=../deps/malloc_group/lib/ld-linux-x86-64.so.2
-MGF := -L/home/dcslab/KeyDB/deps/malloc_group/lib -I/home/dcslab/KeyDB/deps/malloc_group/include -Wl,--rpath=/home/dcslab/KeyDB/deps/malloc_group/lib -Wl,--dynamic-linker=/home/dcslab/KeyDB/deps/malloc_group/lib/ld-linux-x86-64.so.2
+#MGF := -L/home/dcslab/KeyDB/deps/malloc_group/lib -I/home/dcslab/KeyDB/deps/malloc_group/include -Wl,--rpath=/home/dcslab/KeyDB/deps/malloc_group/lib -Wl,--dynamic-linker=/home/dcslab/KeyDB/deps/malloc_group/lib/ld-linux-x86-64.so.2
+#MGF := -L/home/dcslab/KeyDB/deps/malloc_group/lib -I/home/dcslab/KeyDB/deps/malloc_group/include -Wl,--rpath=/home/dcslab/KeyDB/deps/malloc_group/lib -Wl,--dynamic-linker=/home/dcslab/KeyDB/deps/malloc_group/lib/ld-linux-x86-64.so.2
+MGF := -L/home/dcslab/KeyDB/deps/malloc_group/lib -I/home/dcslab/KeyDB/deps/malloc_group/include -Wl,--rpath=/home/dcslab/KeyDB/deps/malloc_group/lib -Wl,--rpath=/lib/x86_64-linux-gnu -Wl,--rpath=/usr/lib/x86_64-linux-gnu -Wl,--dynamic-linker=/home/dcslab/KeyDB/deps/malloc_group/lib/ld-linux-x86-64.so.2
+
+#MGF := -L/home/dcslab/KeyDB/deps/malloc_group/lib -I/home/dcslab/KeyDB/deps/malloc_group/include -Wl,--rpath=/home/dcslab/KeyDB/deps/malloc_group/lib -Wl,--rpath=/lib/x86_64-linux-gnu -Wl,--rpath=/usr/lib/x86_64-linux-gnu -Wl,--dynamic-linker=/home/dcslab/KeyDB/deps/malloc_group/lib/ld-linux-x86-64.so.2
+
+
+#MGF := /home/dcslab/KeyDB/deps/malloc_group/lib/libc.a
 
 #MG_OBJ=""
 #MGF=""

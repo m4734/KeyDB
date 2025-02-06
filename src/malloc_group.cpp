@@ -26,6 +26,7 @@ void* __zmalloc_group(size_t size, size_t group)
 
 int zget_size_sum(void *mem)
 {
+//return 0;
 	return get_size_sum(mem);
 }
 #endif
