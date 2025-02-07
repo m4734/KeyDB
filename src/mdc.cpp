@@ -18,8 +18,8 @@
 #include "mdc.h"
 
 #ifdef GROUP_ON
-#include "../deps/malloc_group/include/malloc.h"
-//#include "malloc_group.h"
+//#include "../deps/malloc_group/include/malloc.h"
+#include "malloc_group.h"
 #endif
 #include <pthread.h>
 
@@ -520,16 +520,12 @@ int checkpoint_start(char *name)
 	//malloc_group(10,0);
 	//#endif
 
-
-
 #ifdef THREAD2
 	dump_exit = 0;
 	pthread_create(&dump_thread,NULL,dump_function,NULL);
 #endif
 
 	//moved to after size scan
-
-
 
 	dump_time=0;
 	residency_time=0;
@@ -741,7 +737,14 @@ static int save_vma_info(struct transactional_data *trx_data,
 	bytes = write(trx_data->vma_table_fd, ve, 
 			sizeof(struct vma_entry));
 	if (bytes != sizeof(struct vma_entry))
+{
+	printf("%s: vma_table[%lu] vma_start:%lx, vma_end:%lx, bitmap_offset:%lx\n",
+			__func__, trx_data->vma_table.pos - 1, 
+			ve->vma_start, ve->vma_end, ve->bitmap_offset);
+
+printf("bytes %d != %d\n",bytes,sizeof(struct vma_entry));
 		return -1;
+}
 #if DEBUG
 	printf("%s: vma_table[%lu] vma_start:%lx, vma_end:%lx, bitmap_offset:%lx\n",
 			__func__, trx_data->vma_table.pos - 1, 
@@ -751,6 +754,17 @@ static int save_vma_info(struct transactional_data *trx_data,
 }
 int mc=0;
 int nmc=0;
+
+/*
+in group
+we free the page when all the data is dumped
+
+in MDC+ - 2 thread
+we free the page hwen all the data is dumped and ref is written...
+
+*/
+
+
 void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 {
 #ifdef GROUP_ON
@@ -761,7 +775,7 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 		return;
 	}
 
-	if (target_vma->size_sum[index] == -1)
+	if (target_vma->size_sum[index] == -1) // we didn't get size sum...
 	{
 		/*
 		   int i,pn;
@@ -769,10 +783,10 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 		   for (i=0;i<pn;i++)
 		   target_vma->size_sum[i] = zget_size_sum(((void *)(target_vma->start+i*4096)));
 		 */
-#if ENABLE_MALLOC_GROUP
-		target_vma->size_sum[index] = get_size_sum(((void *)(target_vma->start+index*4096)));
-//		target_vma->size_sum[index] = zget_size_sum(((void *)(target_vma->start+index*4096)));
-#endif
+
+//		target_vma->size_sum[index] = get_size_sum(((void *)(target_vma->start+index*4096)));
+		target_vma->size_sum[index] = zget_size_sum(((void *)(target_vma->start+index*4096)));
+
 		//	target_vma->size_sum[index] = 4096; // cgmin test
 	}
 
@@ -784,10 +798,11 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 	   return;
 	   }
 	 */
-#if ENABLE_MALLOC_GROUP
-	if (target_vma->size_sum[index] == target_vma->size_cnt[index]/* && target_vma->dumped2[index]*/) //cgmin VAL
+
+#ifdef MDC_ON // if we use mdc ref, the page have to be dumped before release
+	if (target_vma->size_sum[index] == target_vma->size_cnt[index] && target_vma->dumped2[index]) //cgmin VAL
 #else
-		if (target_vma->size_sum[index] == target_vma->size_cnt[index] && target_vma->dumped2[index]) //cgmin VAL
+	if (target_vma->size_sum[index] == target_vma->size_cnt[index]/* && target_vma->dumped2[index]*/) //cgmin VAL
 #endif
 		{
 			//target_vma->dumped2[index] = 1;
@@ -797,9 +812,7 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 			if(/*index > 0 && */madvise((void *)(target_vma->start+index*4096),4096,MADV_DONTNEED)) // index 0 has heap metadata // not only 0 more pages have metadata
 
 				printf("madvise error\n");
-
 			mc++;
-
 			//printf("mc %d madvise end\n",mc);
 		}
 		else if (target_vma->size_cnt[index] > target_vma->size_sum[index])
@@ -826,7 +839,6 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 		printf("%s: save_vma_info failed\n", __func__);
 		return -1;
 	}
-//	printf("bfroe loop================ %p %p\n",target_vma->start,target_vma->end);
 	for (page_addr = target_vma->start; page_addr < target_vma->end;
 			page_addr += BATCH_UNIT_IN_BYTES) {
 		unsigned char residency_vec[BATCH_UNIT_IN_PAGES];
@@ -866,7 +878,7 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 		dump_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
 
 		//#ifdef GROUP_ON
-#if (MDC_TYPE == 3)
+#if (MDC_TYPE == 3) // mdc + group
 		//cgmin madvise --------------------------------------------------------------
 		//batch doesn't have start end addr
 		if (free_after_write)
@@ -876,8 +888,8 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 			//for (addr=page_addr;addr<page_addr + BATCH_UNIT_IN_BYTES;addr+=4096)
 			for (index=0;index<eee;index++)
 			{
-				target_vma->dumped2[base+index] = 1;
-				check_and_free(target_vma,base+index);
+				target_vma->dumped2[base+index] = 1; // dumped
+				check_and_free(target_vma,base+index); // try free
 			}
 		}
 #endif
@@ -889,7 +901,7 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 					errno, page_addr, size);
 		}
 #endif
-#if (MDC_TYPE == 1)
+#if (MDC_TYPE == 1) // only in mdc free pages here
 		if (free_after_write) { //cgmin size_sum // original mdc
 #if 1
 			if (page_addr == NULL || size != 262144)
@@ -932,7 +944,6 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 	}
 #endif
 #endif
-//	printf("after loop================\n");
 
 #if DEBUG
 	print_vma_table(&trx_data->vma_table);
@@ -1185,8 +1196,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 #endif
 	}
 
-	// can not understand this part.....
-	/*
+	// can not understand this part..... - if we don't use THREAD2 we need to dump here if never been dumped
 
 #ifdef THREAD1
 	//#ifndef THREAD2
@@ -1202,8 +1212,6 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 	size_sum-=4;//096;
 	}
 #endif
-
-	 */
 
 #if 0
 	struct timespec start, end;
@@ -1508,7 +1516,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 				return -1;
 			}
 		}
-#else
+#elif (MDC_TYPE == 3)
 
 #ifdef THREAD1
 		//	perform_memory_dump_for_vma_partial(trx_data,0,0);//cgmin

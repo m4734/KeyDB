@@ -287,6 +287,8 @@ bool dbAddCore(redisDb *db, sds key, robj *val, bool fUpdateMvcc, bool fAssumeNe
     serverAssert(fValExpires || !val->FExpires());
 #ifdef GROUP_ON // cgmin may disable this
     sds copy = sdsdupshared_group(key,KEY_GROUP); // cgmin may need dup2 here for malloc_group
+//    sds copy = sdsdupshared(key); // cgmin may need dup2 here for malloc_group
+
 #else
     sds copy = sdsdupshared(key); // cgmin may need dup2 here for malloc_group
 #endif    
