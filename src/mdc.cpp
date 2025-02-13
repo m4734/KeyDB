@@ -286,7 +286,7 @@ static int fill_vma_info(char *line, struct vma_info *vma)
 }
 
 static void load_vma_info_into_table_from_file(struct vma_info *table, 
-		FILE *vma_fp)
+		FILE *vma_fp,unsigned long nr_vma_info)
 {
 	char line[1024];
 	unsigned long idx = 0;
@@ -294,10 +294,19 @@ static void load_vma_info_into_table_from_file(struct vma_info *table,
 #if DEBUG | DEBUG2
 	printf("\n<Address Space Table>\n");
 #endif
+
+	int i;
+	for (i=0;i<nr_vma_info;i++)
+	{
+		fgets(line,sizeof(line),vma_fp);
+		fill_vma_info(line, &table[i]);
+	}
+#if 0
 	while (fgets(line,sizeof(line),vma_fp) != NULL) {
 		if (!fill_vma_info(line, &table[idx]))
 			idx++;
 	}
+#endif
 #if DEBUG | DEBUG2
 	printf("\n");
 #endif
@@ -343,7 +352,7 @@ static int load_vma_info_into_table(struct address_space_table *as_table)
 	if (!table)
 		goto error_close_file;
 
-	load_vma_info_into_table_from_file(table, fp);
+	load_vma_info_into_table_from_file(table, fp,nr_vma_info);
 
 	if (as_table->table)
 		free(as_table->table);
@@ -2316,6 +2325,8 @@ void *dump_function(void* arg)
 		sleep(1);
 	}
 	printf("dump end\n");
+
+	pthread_exit(NULL);
 }
 #endif
 void check_end(void* buf)
