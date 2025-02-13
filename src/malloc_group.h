@@ -12,6 +12,9 @@ void *__zmalloc_group(size_t size, size_t group);
 //int get_size_sum(void *mem);
 int zget_size_sum(void *mem);
 
+int* zget_size_sum_p(void *mem);
+int* zget_size_cnt_p(void *mem);
+
 //void* malloc_group_f(size_t size,size_t group);
 #else
 

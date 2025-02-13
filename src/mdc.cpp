@@ -541,9 +541,9 @@ int checkpoint_start(char *name)
 	bitmap_time=0;
 	bitmap2_time=0;
 
-#if DEBUG
+//#if DEBUG
 	printf("\n>> checkpoint_start(%s)\n", name);
-#endif
+//#endif
 	initialize_transaction(trx, NULL);
 	return prepare_for_checkpointing(trx);
 }
@@ -1186,7 +1186,6 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 			return -1;
 		return 0;
 	}
-#endif
 	//otherwise, write ref and request page dump?
 	as_table = &global_trx.trx_data.as_table;
 
@@ -1204,7 +1203,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 		new_vma = 1; // reaquest new dup
 #endif
 	}
-
+#endif
 	// can not understand this part..... - if we don't use THREAD2 we need to dump here if never been dumped
 
 #ifdef THREAD1
@@ -2329,6 +2328,79 @@ void *dump_function(void* arg)
 	pthread_exit(NULL);
 }
 #endif
+
+#if (GROUP_ON == 1)
+
+void check_and_free2(void *addr, int size) //cgmin size_sum
+{
+
+	int* sum_p;
+	int* cnt_p;
+
+	sum_p = zget_size_sum_p(addr);
+	cnt_p = zget_size_cnt_p(addr);
+
+	if(sum_p == NULL || cnt_p == NULL)
+		return;
+
+	*cnt_p+=size;
+
+	if (*sum_p == *cnt_p)
+		{
+			if(/*index > 0 && */madvise(addr,4096,MADV_DONTNEED)) // index 0 has heap metadata // not only 0 more pages have metadata
+				printf("madvise error\n");
+			mc++;
+			//printf("mc %d madvise end\n",mc);
+		}
+}
+
+
+
+void check_end2(void* buf)
+{
+	if (buf == 0)
+	{
+		printf("buf error\n");
+		return;
+	}
+
+	unsigned long start_addr,end_addr;
+	size_t chunk_size,cs1,cs2;
+
+	//chunk_size = malloc_size(buf); // zmalloc_size???
+	chunk_size = *(size_t*)((char*)buf-sizeof(size_t)); // ???
+	chunk_size = chunk_size-chunk_size%8;
+
+	if (chunk_size > 4096)
+	{
+		printf("cs big\n");
+		return;
+	}
+	//start_addr = (char*)buf-sizeof(size_t); // ??? what if it is not front of chunk
+	start_addr = (unsigned long)((char*)buf-sizeof(size_t)*2); // not good...
+	end_addr = start_addr+chunk_size;
+	//printf("cs %d %d",chunk_size,index);
+	//printf("%p %p\n",buf,(void*)(target_vma->start+index*4096));
+
+	unsigned long start_align = start_addr - start_addr % 4096;
+
+	if (start_addr/4096 == (end_addr-1)/4096) // (end_addr-1)
+	{
+		check_and_free2((void*)start_align,chunk_size);
+	}
+	else
+	{
+		cs1 = 4096-start_addr%4096;
+		cs2 = chunk_size-cs1;
+		check_and_free2((void*)start_align,cs1);
+		check_and_free2((void*)(start_align+4096),cs2);
+	}
+}
+#endif
+
+
+
+
 void check_end(void* buf)
 {
 #ifdef GROUP_ON

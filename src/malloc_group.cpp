@@ -29,6 +29,17 @@ int zget_size_sum(void *mem)
 //return 0;
 	return get_size_sum(mem);
 }
+
+int* zget_size_sum_p(void *mem)
+{
+	return get_size_sum_p(mem);
+}
+
+int* zget_size_cnt_p(void *mem)
+{
+	return get_size_cnt_p(mem);
+}
+
 #endif
 
 //#endif

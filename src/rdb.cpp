@@ -1622,7 +1622,7 @@ int rdbSaveFile(char *filename, const redisDbPersistentDataSnapshot **rgpdb, rdb
 	if (background)
 		rdb.free_after_write = 1;
 
-#ifdef MDC_ON
+#if (MDC_ON == 1)
 	char *filename_local = zstrdup(filename); // jwpark
 		if (checkpoint_start(filename_local)) {
 			printf("[jwpark] checkpoint_start failed\n");
@@ -1639,7 +1639,7 @@ int rdbSaveFile(char *filename, const redisDbPersistentDataSnapshot **rgpdb, rdb
         errno = error;
         goto werr;
     }
-#ifdef MDC_ON
+#if (MDC_ON == 1)
 		if (checkpoint_end(filename_local,background)) {
 			serverLogRaw(LL_WARNING,
 					"[jwpark] checkpoint_end failed\n");
@@ -1751,7 +1751,8 @@ int rdbSaveBackgroundFork(rdbSaveInfo *rsi) {
 
 // cgmin here needs set affinity... 
 
-
+	struct timespec ts1,ts2;
+	clock_gettime(CLOCK_MONOTONIC,&ts1);
 
         /* Child */
         g_pserver->rdb_child_pid = 10000;
@@ -1761,6 +1762,12 @@ int rdbSaveBackgroundFork(rdbSaveInfo *rsi) {
         if (retval == C_OK) {
             sendChildCowInfo(CHILD_INFO_TYPE_RDB_COW_SIZE, "RDB");
         }
+
+	clock_gettime(CLOCK_MONOTONIC,&ts2);
+	unsigned long chk_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
+	printf("chk time %lf\n",i((double)(chk_time))/1000000000);
+
+
         exitFromChild((retval == C_OK) ? 0 : 1);
     } else {
         /* Parent */
