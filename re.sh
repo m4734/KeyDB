@@ -1,6 +1,6 @@
 #!/bin/bash
 
-rm -rf /mnt/test/*
+du /mnt/test
 echo 3 | sudo tee /proc/sys/vm/drop_caches
 
 src/keydb-server redis.conf &

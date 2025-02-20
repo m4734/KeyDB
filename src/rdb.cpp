@@ -1764,9 +1764,9 @@ int rdbSaveBackgroundFork(rdbSaveInfo *rsi) {
         }
 
 	clock_gettime(CLOCK_MONOTONIC,&ts2);
-	unsigned long chk_time+=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
-	printf("chk time %lf\n",i((double)(chk_time))/1000000000);
-
+	unsigned long chk_time=(ts2.tv_sec-ts1.tv_sec)*1000000000+ts2.tv_nsec-ts1.tv_nsec;
+//	printf("chk time %lf\n",((double)(chk_time))/1000000);
+	printf("chk time %lu ms\n",chk_time/1000000);
 
         exitFromChild((retval == C_OK) ? 0 : 1);
     } else {
@@ -3742,6 +3742,12 @@ int rdbLoadFile(const char *filename, rdbSaveInfo *rsi, int rdbflags) {
 
 	//cgmin MDC restore hrer
 		/* jwpark */
+
+// time from restore start to restore end
+
+	struct timespec ts1,ts2;
+	clock_gettime(CLOCK_MONOTONIC,&ts1); 
+
 #ifdef MDC_ON
 		   if (restore_start((char*)filename)) {
 		   printf("[jwpark] restore_start failed\n");
@@ -3758,6 +3764,12 @@ int rdbLoadFile(const char *filename, rdbSaveInfo *rsi, int rdbflags) {
 #ifdef MDC_ON
 		restore_end();
 #endif
+
+	clock_gettime(CLOCK_MONOTONIC,&ts2); 
+	unsigned long time = (ts2.tv_sec*1000000000+ts2.tv_nsec) - (ts1.tv_sec*1000000000+ts1.tv_nsec);
+	printf("restore time %lu ms\n",time/1000000);
+	
+
 
     fclose(fp);
     stopLoading(retval==C_OK);
