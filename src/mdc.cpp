@@ -912,7 +912,7 @@ static int perform_memory_dump_for_vma(struct transactional_data *trx_data,
 #endif
 #if (MDC_TYPE == 1) // only in mdc free pages here
 		if (free_after_write) { //cgmin size_sum // original mdc
-#if 1
+#if 0
 			if (page_addr == NULL || size != 262144)
 				printf("madvise %p %ld\n",page_addr,size);
 #else // kernel panic
