@@ -19,7 +19,7 @@
 #define DEBUG_TIME2 0
 //#define DEBUG3 1
 
-#define MDC_TYPE 0
+#define MDC_TYPE 1
 /*
 0 = original
 1 = mdc
@@ -30,6 +30,12 @@
 #if (MDC_TYPE == 1 || MDC_TYPE == 3)
 #define MDC_ON 1
 #define ENABLE_MDCP 1
+#endif
+
+#if (MDC_TYPE == 1)
+#define AVOID_FREE 1
+#else
+#define AVOID_FREE 0
 #endif
 
 #if (MDC_TYPE == 2 || MDC_TYPE == 3)

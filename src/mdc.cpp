@@ -244,9 +244,8 @@ static void close_file_for_vma_info(FILE *fp)
 
 static int fill_vma_info(char *line, struct vma_info *vma)
 {
-#if DEBUG3
-		printf("line %s\n",line);
-#endif
+//	printf("line %s",line); //cgmin test
+
 	char *p = strchr(line,'-');
 	char *p2= strchr(line,' ');
 	if (p && p2) {
@@ -641,6 +640,9 @@ static int __perform_memory_dump_in_batch(struct transactional_data *trx_data,
 				return -1;
 #if MADVISE_UNIT_TYPE == MADV_PAGE_UNIT // not used
 #if (MDC_TYPE == 1)
+//printf("madvise %p\n",addr);
+//			if (addr/4096 == (unsigned long)(trx_data->as_table.table) /4096)
+//				debug_error();
 			if (madvise((void *)addr, PAGE_SIZE, MADV_DONTNEED2)) { //cgmin size_sum have to full
 				printf("madvise with page unit failed %d\n", errno);
 				return -1;
@@ -1395,13 +1397,19 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 	static void free_bitmap_table(struct bitmap_table *bm_table)
 	{
 		if (bm_table->table)
+		{
+//			printf("free bm table\n",bm_table->table);
 			free(bm_table->table);
+		}
 	}
 
 	static void free_vma_table(struct vma_table *vma_table)
 	{
 		if (vma_table->table)
+		{
+//			printf("free vma table\n",vma_table->table);
 			free(vma_table->table);
+		}
 	}
 
 	static void free_address_space_table(struct address_space_table *table)
@@ -1424,6 +1432,8 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 				free(table->table[j].dumped2);
 #endif
 			}
+//			printf("free as table %p\n",table->table);
+//			fflush(stdout);
 			free(table->table);
 		}
 
@@ -1454,10 +1464,13 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 
 	void cleanup_for_checkpointing(struct transactional_data *trx_data)
 	{
+//		printf("cleanup start\n");
 		close_files_for_checkpointing(trx_data);
+//		printf("c1\n");
 		free_address_space_table(&trx_data->as_table);
 		free_vma_table(&trx_data->vma_table);
 		free_bitmap_table(&trx_data->bm_table);
+//		printf("cleanup end\n");
 	}
 
 	static int __perform_memory_dump_for_each_vma(struct transactional_data *trx_data, int free_after_write)
@@ -1512,12 +1525,10 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 		printf("madvise mc %d nmc %d\n",mc,nmc);
 #if (MDC_TYPE == 1)
 		if (free_after_write) {
-//			printf("before dump--------------------------\n");
 			if (perform_memory_dump_for_each_vma_and_free(trx_data)) {
 				printf("%s: memory dump and free failed\n",__func__);
 				return -1;
 			}
-//			printf("after dump-----------------------------\n");
 		} else {
 			if (perform_memory_dump_for_each_vma(trx_data)) {
 				printf("%s: memory dump failed\n",__func__);
@@ -1536,14 +1547,19 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 #endif
 
 #endif
+
+#if (AVOID_FREE == 0)
 		cleanup_for_checkpointing(trx_data);
+#endif
 		finalize_transaction();
 		if (rename_files(tmpfile,newfile)) {
 			printf("%s: failed tmpfile %s, newfile %s\n",__func__,tmpfile,newfile);
 			unlink(tmpfile);
 			return -1;
 		}
+#if (AVOID_FREE == 0)
 		free(newfile);
+#endif
 		//printf("\n>> checkpoint_end()\n");
 
 		printf("dump %ld\nresidency %ld\nbitmap %ld bitmap2 %ld\n",dump_time,residency_time,bitmap_time,bitmap2_time);

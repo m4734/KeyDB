@@ -1570,6 +1570,7 @@ int rdbSaveFp(FILE *fp, const redisDbPersistentDataSnapshot **rgpdb, rdbSaveInfo
 
 int rdbSave(const redisDbPersistentDataSnapshot **rgpdb, rdbSaveInfo *rsi)
 {
+#if (AVOID_FREE == 0)
     std::vector<const redisDbPersistentDataSnapshot*> vecdb;
     if (rgpdb == nullptr)
     {
@@ -1579,7 +1580,17 @@ int rdbSave(const redisDbPersistentDataSnapshot **rgpdb, rdbSaveInfo *rsi)
         }
         rgpdb = vecdb.data();
     }
-
+#else
+    std::vector<const redisDbPersistentDataSnapshot*> *vecdb = new std::vector<const redisDbPersistentDataSnapshot*>;
+    if (rgpdb == nullptr)
+    {
+        for (int idb = 0; idb < cserver.dbnum; ++idb)
+        {
+            vecdb->push_back(g_pserver->db[idb]);
+        }
+        rgpdb = vecdb->data();
+    }
+#endif
     int err = C_OK;
     if (g_pserver->rdb_filename != NULL)
         err = rdbSaveFile(g_pserver->rdb_filename, rgpdb, rsi);
@@ -1634,20 +1645,23 @@ int rdbSaveFile(char *filename, const redisDbPersistentDataSnapshot **rgpdb, rdb
 #endif
 //cgmin checkpoint start hrere
 
-
     if (rdbSaveRio(&rdb,rgpdb,&error,RDBFLAGS_NONE,rsi) == C_ERR) {
         errno = error;
         goto werr;
     }
 #if (MDC_ON == 1)
 		if (checkpoint_end(filename_local,background)) {
+#if (AVOID_FREE == 0)
 			serverLogRaw(LL_WARNING,
 					"[jwpark] checkpoint_end failed\n");
+#endif
 			errno = error;
 			goto werr;
 		} else {
+#if (AVOID_FREE == 0)
 			serverLogRaw(LL_WARNING,
 					"[jwpark] checkpoint_end\n");
+#endif
 		}
 #endif
 //cgmin checkpoint end here
@@ -1655,7 +1669,9 @@ int rdbSaveFile(char *filename, const redisDbPersistentDataSnapshot **rgpdb, rdb
     /* Make sure data will not remain on the OS's output buffers */
     if (fflush(fp)) goto werr;
     if (fsync(fileno(fp))) goto werr;
+#if (AVOID_FREE == 0)
     if (fclose(fp)) { fp = NULL; goto werr; }
+#endif
     fp = NULL;
     
     /* Use RENAME to make sure the DB file is changed atomically only
@@ -1674,7 +1690,9 @@ int rdbSaveFile(char *filename, const redisDbPersistentDataSnapshot **rgpdb, rdb
         return C_ERR;
     }
 
+#if (AVOID_FREE == 0)
     serverLog(LL_NOTICE,"DB saved on disk");
+#endif
     if (!g_pserver->rdbThreadVars.fRdbThreadActive)
     {
         // Do this only in a synchronous save, otherwise our thread controller will update these
@@ -1760,7 +1778,9 @@ int rdbSaveBackgroundFork(rdbSaveInfo *rsi) {
         redisSetCpuAffinity(g_pserver->bgsave_cpulist);
         retval = rdbSave(nullptr, rsi);
         if (retval == C_OK) {
+#if (AVOID_FREE == 0)
             sendChildCowInfo(CHILD_INFO_TYPE_RDB_COW_SIZE, "RDB");
+#endif
         }
 
 	clock_gettime(CLOCK_MONOTONIC,&ts2);
@@ -2280,7 +2300,9 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int *error, uint64_t mvcc_ts
     {
         size_t encoded_len;
         unsigned char *encoded = (unsigned char*)
-            rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len);
+//            rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len,CHKPOINT_REF);
+            __rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len,CHKPOINT_REF); //cgmin mdc
+
         if (encoded == NULL) return NULL;
 
         o = createObject(OBJ_STRING,encoded); /* Obj type fixed below. */

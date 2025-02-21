@@ -185,6 +185,8 @@ ssize_t __rdbSaveRawString(rio *rdb, const unsigned char *s, size_t len, int typ
 #define rdbSaveRawString(rdb, s, len) __rdbSaveRawString(rdb, s, len, 0) // jwpark
 void *__rdbGenericLoadStringObject(rio *rdb, int flags, size_t *lenptr, int type);
 #define rdbGenericLoadStringObject(rdb, flags, lenptr) __rdbGenericLoadStringObject(rdb, flags, lenptr, 0) // jwpark
+//#define rdbGenericLoadStringObject(rdb, flags, lenptr,type) __rdbGenericLoadStringObject(rdb, flags, lenptr, type) // jwpark
+
 
 
 
