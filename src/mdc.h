@@ -43,6 +43,8 @@
 #define ENABLE_MALLOC_GROUP 1
 #define REMOVE_MINCORE 1
 
+#define SIZE4K
+
 enum GROUP_NUM
 {
 	NONE_GROUP,

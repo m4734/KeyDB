@@ -796,9 +796,11 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 		 */
 
 //		target_vma->size_sum[index] = get_size_sum(((void *)(target_vma->start+index*4096)));
+#if (SIZE4K == 1)
+	target_vma->size_sum[index] = 4096; // cgmin test
+#else
 		target_vma->size_sum[index] = zget_size_sum(((void *)(target_vma->start+index*4096)));
-
-		//	target_vma->size_sum[index] = 4096; // cgmin test
+#endif
 	}
 
 	//printf("sum %d cnt %d\n",target_vma->size_sum[index],target_vma->size_cnt[index]);
@@ -813,7 +815,13 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 #ifdef MDC_ON // if we use mdc ref, the page have to be dumped before release
 	if (target_vma->size_sum[index] == target_vma->size_cnt[index] && target_vma->dumped2[index]) //cgmin VAL
 #else
+
+#if (SIZE4K == 1)
+	if (4096 == target_vma->size_cnt[index]/* && target_vma->dumped2[index]*/) //cgmin VAL
+#else
 	if (target_vma->size_sum[index] == target_vma->size_cnt[index]/* && target_vma->dumped2[index]*/) //cgmin VAL
+#endif
+
 #endif
 		{
 			//target_vma->dumped2[index] = 1;
@@ -1753,11 +1761,16 @@ error_free_vma_table:
 			return -1;
 		if (load_bitmap_entries_into_table(trx_data, &trx_data->bm_table))
 			return -1;
-
+#if 1 // popluate
 		trx_data->dump_mmap_addr = mmap(NULL, trx_data->dump_mmap_size, PROT_READ,
-				//MAP_SHARED | MAP_FILE, trx_data->dump_fd, 0);
-				//				MAP_SHARED | MAP_FILE | MAP_POPULATE, trx_data->dump_fd, 0);
-			MAP_PRIVATE | MAP_FILE | MAP_POPULATE, trx_data->dump_fd, 0);
+				MAP_SHARED | MAP_FILE, trx_data->dump_fd, 0);
+				//MAP_SHARED | MAP_FILE | MAP_POPULATE, trx_data->dump_fd, 0);
+//			MAP_PRIVATE | MAP_FILE | MAP_POPULATE, trx_data->dump_fd, 0);
+#else
+		trx_data->dump_mmap_addr = mmap(NULL, trx_data->dump_mmap_size, PROT_READ,
+			MAP_PRIVATE | MAP_FILE, trx_data->dump_fd, 0); // no populate oom
+#endif
+
 #if 0
 		//cgmin
 		global_max_page = trx_data->dump_mmap_size/4096+1;
@@ -1861,14 +1874,17 @@ error_free_vma_table:
 		return size;
 		//	return ret;
 #else
+#if 1 // use mmap
 		memcpy(buf, (char *)trx_data->dump_mmap_addr + dump_off, size);
 		return size;
-		//int rv;
-		//	rv = pread(trx_data->dump_fd, buf, size, dump_off);
-		//printf("rv %d\n",rv);
-		//if (rv == size)
-		//	return rv;
-		//return 0;
+#else // just read
+		int rv;
+		rv = pread(trx_data->dump_fd, buf, size, dump_off);
+//		printf("rv %d\n",rv);
+		if (rv == size)
+			return rv;
+		return 0;
+#endif
 #endif
 	}
 
@@ -1966,17 +1982,17 @@ error_free_vma_table:
 
 			release_address_table(&table);
 			return 0;
-			} else {
+		} else {
 #if DEBUG_TIME
-				struct timespec start, mid, mid2, end;
+			struct timespec start, mid, mid2, end;
 #endif
 #if ENABLE_MALLOC_GROUP
-				{ //< 1024) { //cgmin //cgmin VAL now
+			{ //< 1024) { //cgmin //cgmin VAL now
 #else
-					if (size < 128) {
+			if (size < 128) {
 #endif
 #if DEBUG_TIME
-						clock_gettime(CLOCK_MONOTONIC, &start);
+				clock_gettime(CLOCK_MONOTONIC, &start);
 #endif
 						size_t ret = fread(buf, size, count, fp);
 						if (ret != count)
@@ -1987,34 +2003,34 @@ error_free_vma_table:
 						total_time += get_time_difference_ns(&end, &start);
 #endif
 						return 0;
-					}
+			}
 #if DEBUG_TIME
-					clock_gettime(CLOCK_MONOTONIC, &start);
+			clock_gettime(CLOCK_MONOTONIC, &start);
 #endif
-					size_t address;
-					size_t ret = fread(&address, POINTER_SIZE_IN_BYTES,1,fp);
-					if (ret != 1) {
-						return -1;
-					}
+			size_t address;
+			size_t ret = fread(&address, POINTER_SIZE_IN_BYTES,1,fp);
+			if (ret != 1) {
+				return -1;
+			}
 #if DEBUG_TIME
-					clock_gettime(CLOCK_MONOTONIC, &mid);
-					_fread_time += get_time_difference_ns(&mid, &start);
-					clock_gettime(CLOCK_MONOTONIC, &mid2);
+			clock_gettime(CLOCK_MONOTONIC, &mid);
+			_fread_time += get_time_difference_ns(&mid, &start);
+			clock_gettime(CLOCK_MONOTONIC, &mid2);
 #endif
 
-					size_t bytes = get_object_from_dump(buf, size, address, trx_data);
+			size_t bytes = get_object_from_dump(buf, size, address, trx_data);
 #if DEBUG_TIME
-					clock_gettime(CLOCK_MONOTONIC, &end);
+			clock_gettime(CLOCK_MONOTONIC, &end);
 #endif
-					if (bytes != (size * count)) //cgmin size
-						return -1;
+			if (bytes != (size * count)) //cgmin size
+				return -1;
 #if DEBUG_TIME
-					_object_time += get_time_difference_ns(&end, &mid2);
-					total_time += get_time_difference_ns(&end, &start);
+			_object_time += get_time_difference_ns(&end, &mid2);
+			total_time += get_time_difference_ns(&end, &start);
 #endif
-					return 0;
-				}
-				}
+			return 0;
+		}
+	}
 
 				static size_t mdc_fread_for_restoring_value(void *buf,
 						size_t size, size_t count, FILE *fp)
@@ -2323,21 +2339,27 @@ if (partial == 0)
 void *dump_function(void* arg)
 {
 	printf("dump start\n");
+
+	struct transactional_data *trx_data = &global_trx.trx_data;
+	struct address_space_table *table=&trx_data->as_table;
+	int free_after_write=1;
+
 	while(!dump_exit || new_vma == 1)
 	{
-		struct transactional_data *trx_data = &global_trx.trx_data;
-		struct address_space_table *table=&trx_data->as_table;
-		int free_after_write=1;
-		for (int cursor=0;cursor < table->nr_entries;cursor++)
+		if (new_vma)
 		{
-			if (table->table[cursor].stored == 1 && table->table[cursor].dumped == 0)
+			new_vma = 0;
+			for (int cursor=0;cursor < table->nr_entries;cursor++)
 			{
-				table->table[cursor].dumped = 1;
-				perform_memory_dump_for_vma(trx_data,&table->table[cursor],free_after_write);
+				if (table->table[cursor].stored == 1 && table->table[cursor].dumped == 0)
+				{
+					table->table[cursor].dumped = 1;
+					perform_memory_dump_for_vma(trx_data,&table->table[cursor],free_after_write);
+				}
 			}
 		}
-		new_vma = 0;
-		sleep(1);
+		else
+			sleep(1);
 	}
 	printf("dump end\n");
 
