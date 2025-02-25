@@ -19,7 +19,7 @@
 #define DEBUG_TIME2 0
 //#define DEBUG3 1
 
-#define MDC_TYPE 1
+#define MDC_TYPE 0
 /*
 0 = original
 1 = mdc

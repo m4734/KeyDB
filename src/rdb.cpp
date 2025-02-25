@@ -2301,7 +2301,11 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int *error, uint64_t mvcc_ts
         size_t encoded_len;
         unsigned char *encoded = (unsigned char*)
 //            rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len,CHKPOINT_REF);
+#if MDC_ON == 1
             __rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len,CHKPOINT_REF); //cgmin mdc
+#else
+            __rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len,CHKPOINT_VAL); //cgmin mdc
+#endif
 
         if (encoded == NULL) return NULL;
 

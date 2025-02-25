@@ -1763,9 +1763,9 @@ error_free_vma_table:
 			return -1;
 #if 1 // popluate
 		trx_data->dump_mmap_addr = mmap(NULL, trx_data->dump_mmap_size, PROT_READ,
-				MAP_SHARED | MAP_FILE, trx_data->dump_fd, 0);
+//				MAP_SHARED | MAP_FILE, trx_data->dump_fd, 0);
 				//MAP_SHARED | MAP_FILE | MAP_POPULATE, trx_data->dump_fd, 0);
-//			MAP_PRIVATE | MAP_FILE | MAP_POPULATE, trx_data->dump_fd, 0);
+			MAP_PRIVATE | MAP_FILE | MAP_POPULATE, trx_data->dump_fd, 0);
 #else
 		trx_data->dump_mmap_addr = mmap(NULL, trx_data->dump_mmap_size, PROT_READ,
 			MAP_PRIVATE | MAP_FILE, trx_data->dump_fd, 0); // no populate oom
