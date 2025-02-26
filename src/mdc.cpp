@@ -775,10 +775,9 @@ we free the page hwen all the data is dumped and ref is written...
 
 */
 
-
 void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 {
-#ifdef GROUP_ON
+#if (GROUP_ON == 1)
 	//printf(" max %d  index  %d  ",(target_vma->end-target_vma->start)/4096,index);
 	if ((target_vma->end-target_vma->start)/4096 <= index)
 	{
@@ -812,8 +811,12 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 	   }
 	 */
 
-#ifdef MDC_ON // if we use mdc ref, the page have to be dumped before release
+#if (MDC_ON == 1) // if we use mdc ref, the page have to be dumped before release
+#if (SIzE4K == 1)
+	if (4096 == target_vma->size_cnt[index] && target_vma->dumped2[index]) //cgmin VAL
+#else
 	if (target_vma->size_sum[index] == target_vma->size_cnt[index] && target_vma->dumped2[index]) //cgmin VAL
+#endif
 #else
 
 #if (SIZE4K == 1)
@@ -824,13 +827,18 @@ void check_and_free(struct vma_info *target_vma, int index) //cgmin size_sum
 
 #endif
 		{
-			//target_vma->dumped2[index] = 1;
+//			target_vma->dumped2[index] = 1;
 			//return;
 			//printf("madvise %p ",((void *)(target_vma->start+index*4096)));
 //			if(/*index > 0 && */madvise((void *)(target_vma->start+index*4096),4096,MADV_DONTNEED2)) // index 0 has heap metadata // not only 0 more pages have metadata
+
+#if 1
+//memset((void *)(target_vma->start+index*4096),0,4096);
+
 			if(/*index > 0 && */madvise((void *)(target_vma->start+index*4096),4096,MADV_DONTNEED)) // index 0 has heap metadata // not only 0 more pages have metadata
 
 				printf("madvise error\n");
+#endif
 			mc++;
 			//printf("mc %d madvise end\n",mc);
 		}
@@ -1181,7 +1189,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 
 	// cgmin doesn't access the buf
 	//#if ENABLE_MALLOC_GROUP
-#ifndef MDC_ON
+#if (MDC_ON == 0)
 	//always write value itself
 	size_t ret = fwrite(buf, size, count, fp);
 	if (ret != count)
@@ -1360,7 +1368,7 @@ static int mdc_fwrite_for_chkpointing_reference(const void *buf,
 			return 0;
 
 
-#ifndef MDC_ON
+#if (MDC_ON == 0)
 		type = CHKPOINT_VAL;
 #endif
 
@@ -2469,7 +2477,7 @@ void check_end(void* buf)
 
 	//chunk_size = malloc_size(buf); // zmalloc_size???
 	chunk_size = *(size_t*)((char*)buf-sizeof(size_t)); // ???
-	chunk_size = chunk_size-chunk_size%8;
+	chunk_size = chunk_size-chunk_size%8; // remove flags
 
 	if (chunk_size > 4096)
 	{
@@ -2477,7 +2485,9 @@ void check_end(void* buf)
 		return;
 	}
 	//start_addr = (char*)buf-sizeof(size_t); // ??? what if it is not front of chunk
-	start_addr = (unsigned long)((char*)buf-sizeof(size_t)*2); // not good...
+	//start_addr = (unsigned long)((char*)buf-sizeof(size_t)*2); // not good...
+	start_addr = (unsigned long)((char*)buf-sizeof(size_t)); // not good... // what is the chunk?
+
 	end_addr = start_addr+chunk_size;
 	index = (start_addr-target_vma->start)/4096;
 	//printf("cs %d %d",chunk_size,index);

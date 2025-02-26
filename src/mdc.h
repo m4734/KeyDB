@@ -19,7 +19,7 @@
 #define DEBUG_TIME2 0
 //#define DEBUG3 1
 
-#define MDC_TYPE 0
+#define MDC_TYPE 2
 /*
 0 = original
 1 = mdc
@@ -43,7 +43,7 @@
 #define ENABLE_MALLOC_GROUP 1
 #define REMOVE_MINCORE 1
 
-#define SIZE4K
+#define SIZE4K 1
 
 enum GROUP_NUM
 {
