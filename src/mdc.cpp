@@ -1994,11 +1994,7 @@ error_free_vma_table:
 #if DEBUG_TIME
 			struct timespec start, mid, mid2, end;
 #endif
-#if ENABLE_MALLOC_GROUP
-			{ //< 1024) { //cgmin //cgmin VAL now
-#else
 			if (size < 128) {
-#endif
 #if DEBUG_TIME
 				clock_gettime(CLOCK_MONOTONIC, &start);
 #endif

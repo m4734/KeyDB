@@ -1015,8 +1015,6 @@ ssize_t rdbSaveObject(rio *rdb, robj_roptr o, robj_roptr key) {
         /* Save a hash value */
         if (o->encoding == OBJ_ENCODING_ZIPLIST) {
             size_t l = ziplistBlobLen((unsigned char*)ptrFromObj(o));
-		unsigned char* aaa = (unsigned char*)ptrFromObj(o);
-
 //            if ((n = rdbSaveRawString(rdb,(unsigned char*)ptrFromObj(o),l)) == -1) return -1;
             if ((n = __rdbSaveRawString(rdb,(unsigned char*)ptrFromObj(o),l,chk_type)) == -1) return -1; // cgmin MDC
 
@@ -2311,7 +2309,7 @@ robj *rdbLoadObject(int rdbtype, rio *rdb, sds key, int *error, uint64_t mvcc_ts
         size_t encoded_len;
         unsigned char *encoded = (unsigned char*)
 //            rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len,CHKPOINT_REF);
-#if MDC_ON == 1
+#if (MDC_ON == 1)
             __rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len,CHKPOINT_REF); //cgmin mdc
 #else
             __rdbGenericLoadStringObject(rdb,RDB_LOAD_PLAIN,&encoded_len,CHKPOINT_VAL); //cgmin mdc
@@ -3784,7 +3782,7 @@ int rdbLoadFile(const char *filename, rdbSaveInfo *rsi, int rdbflags) {
 	struct timespec ts1,ts2;
 	clock_gettime(CLOCK_MONOTONIC,&ts1); 
 
-#ifdef MDC_ON
+#if (MDC_ON == 1)
 		   if (restore_start((char*)filename)) {
 		   printf("[jwpark] restore_start failed\n");
 		   errno = EINVAL;
@@ -3797,7 +3795,7 @@ int rdbLoadFile(const char *filename, rdbSaveInfo *rsi, int rdbflags) {
     retval = rdbLoadRio(&rdb,rdbflags,rsi);
 
 //cgmin MDC restore end
-#ifdef MDC_ON
+#if (MDC_ON == 1)
 		restore_end();
 #endif
 
