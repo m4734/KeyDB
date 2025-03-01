@@ -1304,7 +1304,7 @@ int rdbSaveKeyValuePair(rio *rdb, robj_roptr key, robj_roptr val, const expireEn
         }
     }
 
-#if (GROUP_ON == 1)
+#if (GROUP_ON == 1 && GROUP_FREE == 1)
 	check_end((void*)ptrFromObj(val)); //cgmin
 
 // it is obj_zset->ziplist

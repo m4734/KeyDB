@@ -19,7 +19,7 @@
 #define DEBUG_TIME2 0
 //#define DEBUG3 1
 
-#define MDC_TYPE 3
+#define MDC_TYPE 1
 /*
 0 = original
 1 = mdc
@@ -40,11 +40,22 @@
 
 #if (MDC_TYPE == 2 || MDC_TYPE == 3)
 #define GROUP_ON 1
+#define GROUP_FREE 1
 #define ENABLE_MALLOC_GROUP 1
 #define REMOVE_MINCORE 1
 
 #define SIZE4K 1
 
+#endif
+
+//--------------------------------
+
+#define GROUP_ON 1
+#define GROUP_FREE 0
+
+//----------------------------------
+
+#if (GROUP_ON == 1)
 enum GROUP_NUM
 {
 	NONE_GROUP,
@@ -52,10 +63,11 @@ enum GROUP_NUM
 	META_GROUP,
 	KEY_GROUP
 };
+#endif
 
+#if (GROUP_FREE == 1)
 void check_end(void* buf);
 void check_end2(void *buf);
-
 #endif
 
 // i think need one of these
